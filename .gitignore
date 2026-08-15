@@ -1,0 +1,11 @@
+/data/
+# Generated pricing data, refreshed from the admin UI in -w mode — large,
+# churns on every refresh, and reproducible. See docs/configuration.md.
+/config/base-costs.json
+# Written by `run.py up` from the agentgateway-ui-password entry in
+# `pass`. Bcrypt hashes aren't as sensitive as the password, but there's
+# no reason to track a credential file.
+/config/htpasswd
+__pycache__
+.ruff_cache
+.claude

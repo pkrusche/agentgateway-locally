@@ -1,0 +1,94 @@
+# Single source of truth for how to run the agentgateway container.
+# Read by run.py (stdlib tomllib), which drives it via either `docker`
+# or Apple's `container` CLI (--backend container) — there is no
+# separate docker-compose.yml; run.py builds the `docker run`/
+# `container run` invocation straight from this file.
+#
+# Also written up in docs/configuration.md. Unlike config/config.yaml,
+# nothing rewrites this file, so the comments below are safe to keep.
+
+name = "agentgateway"
+
+# Pinned by digest as well as tag: a tag is mutable and can be
+# re-pointed by the registry, a digest can't, so `up` can't silently
+# pull a different image than the one reviewed here. Bump both halves
+# together on upgrade; read the new digest off the pulled image with
+# `docker buildx imagetools inspect <ref>` or
+# `container image inspect <ref>`.
+image = "cr.agentgateway.dev/agentgateway:v1.4.1@sha256:efd79355b89094a8225a9db465d9a01dc656b377f0bab458761b935a13231d29"
+
+# No restart policy is set. Docker could do `unless-stopped` here, but
+# Apple's `container` CLI has no equivalent, and a policy that only
+# applies under one backend is worse than none: it would silently bring
+# the container — and the provider keys in its runtime metadata — back
+# after every reboot, so `run.py down` would rarely be what actually
+# clears them. Both backends now behave the same way: `run.py up` is
+# what starts agentgateway, including after a crash or reboot.
+# See docs/security.md.
+
+# Bound to loopback only — reachable from this machine, not the LAN.
+# 4000 is the LLM data plane, 3000 is MCP, 15000 is the admin UI.
+#
+# Loopback is not a security boundary on its own: any local process can
+# reach these, and under the `container` backend the container also gets
+# a routable vmnet address (192.168.64.0/24) on which *every* container
+# port is reachable regardless of what's published here. So all three
+# ports carry their own auth: 4000 and 3000 the apiKey policy, 15000 the
+# UI gateway's basicAuth policy (config/config.yaml). The unauthenticated
+# admin address is switched off — 15000 is now an ordinary gateway
+# listener, which is what lets a policy attach to it. See docs/security.md.
+ports = [
+  "127.0.0.1:4000:4000",
+  "127.0.0.1:3000:3000",
+  "127.0.0.1:15000:15000",
+]
+
+# Bare NAME entries are passed to the runtime by name only (`-e NAME`),
+# so the value is inherited from run.py's own environment instead of
+# appearing on the `docker run`/`container run` command line where any
+# local process could read it out of `ps`. run.py populates
+# OPENAI_API_KEY/ANTHROPIC_API_KEY from `pass`, and
+# GATEWAY_API_KEY_SHA256 with the *hash* of the gateway's own API key
+# (the key itself never enters the container). NAME=default entries are
+# passed as literal values and fall back to that default when unset
+# (override with e.g. RUST_LOG=debug).
+env = [
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GATEWAY_API_KEY_SHA256",
+  "RUST_LOG=info",
+]
+
+# Also holds `htpasswd`, written by run.py on every `up` from the
+# agentgateway-ui-password entry in `pass` (bcrypt) and gitignored —
+# that's what the UI gateway's basicAuth policy reads.
+#
+# Mounted read-only by default; -w/--writable mounts it read-write
+# instead and drops `command` below, so the admin UI can save config
+# edits (and cost-catalog refreshes) back to disk — agentgateway then
+# manages the whole directory itself, which is its own documented
+# pattern for UI-editable config. A plain read-write single-file mount
+# doesn't work: an in-place rewrite needs to replace the file's inode,
+# which a single-file bind mount can't reflect back to the host.
+config_volume = "./config:/config"
+
+# Always read-write — holds the sqlite request-log database
+# (config/config.yaml's logging.database.url) backing the admin UI's
+# Logs page. Created on first `up` if missing, and chmod'ed 0700 by
+# run.py, since request logs can contain full prompts and responses.
+volumes = [
+  "./data:/data",
+]
+
+# Host path of that request-log database — the ./data mount above plus
+# the filename from config/config.yaml's logging.database.url. Used by
+# `run.py prune` to drop old rows.
+request_log_db = "./data/request-logs.db"
+
+# Appended as the container's args, but only outside writable mode —
+# makes agentgateway load exactly this file rather than managing the
+# /config directory itself.
+command = [
+  "-f",
+  "/config/config.yaml",
+]
