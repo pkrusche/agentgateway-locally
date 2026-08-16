@@ -189,6 +189,27 @@ def require_pass_entry(entry, label):
         die(f"aborting — create it yourself with: pass insert {entry}")
 
 
+def pass_show_or_dummy(entry, label, dummy):
+    """Like pass_show(), but a missing entry gets a dummy value and a
+    warning instead of blocking `up`.
+
+    Unlike the gateway key or UI password, a provider key with nothing
+    behind it isn't fatal to starting agentgateway — e.g. only one of
+    OpenAI/Anthropic might be in use. Requests routed to the
+    unconfigured provider will just fail upstream with a 401 instead of
+    never being attempted.
+    """
+    if pass_has(entry):
+        return pass_show(entry)
+    print(
+        f"warning: no pass entry at '{entry}' for your {label} — "
+        f"using a dummy key, so requests routed to it will fail upstream. "
+        f"Fix with: pass insert {entry}",
+        file=sys.stderr,
+    )
+    return dummy
+
+
 def require_gateway_key(entry):
     """Ensure a gateway API key exists in pass, offering to generate one.
 
@@ -585,8 +606,6 @@ def wait_until_running(backend, name):
 
 def cmd_up(backend, spec, writable):
     backend.check_prereqs()
-    require_pass_entry(OPENAI_PASS_ENTRY, "OpenAI API key")
-    require_pass_entry(ANTHROPIC_PASS_ENTRY, "Anthropic API key")
     require_gateway_key(GATEWAY_PASS_ENTRY)
     require_ui_password(UI_PASS_ENTRY)
 
@@ -611,8 +630,12 @@ def cmd_up(backend, spec, writable):
         # predates this.
         data_dir.chmod(0o700)
 
-    os.environ["OPENAI_API_KEY"] = pass_show(OPENAI_PASS_ENTRY)
-    os.environ["ANTHROPIC_API_KEY"] = pass_show(ANTHROPIC_PASS_ENTRY)
+    os.environ["OPENAI_API_KEY"] = pass_show_or_dummy(
+        OPENAI_PASS_ENTRY, "OpenAI API key", "sk-dummy-openai-key-not-configured"
+    )
+    os.environ["ANTHROPIC_API_KEY"] = pass_show_or_dummy(
+        ANTHROPIC_PASS_ENTRY, "Anthropic API key", "sk-ant-dummy-key-not-configured"
+    )
     # Only the hash crosses into the container: agentgateway's `keyHash`
     # form compares incoming keys against it, so the gateway key itself
     # never shows up in the container's environment.
