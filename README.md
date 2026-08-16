@@ -40,6 +40,7 @@ python3.12 run.py setup    # or python3.13, 3.14, ...
 ```sh
 ./run.py up          # reads the keys from pass, starts the container
 ./run.py up -w       # same, but config/ is read-write so the UI can save
+./run.py up --jaeger # also start Jaeger and export traces for every request
 ./run.py status      # container state (running / not created / ...)
 ./run.py logs        # follow logs
 ./run.py restart     # re-reads keys from pass, restarts
@@ -56,6 +57,12 @@ Once it's up:
 - **LLM data plane** — `http://localhost:4000`, OpenAI- and
   Anthropic-compatible (`/v1/chat/completions`, `/v1/messages`).
 - **MCP** — `http://localhost:3000` (no targets configured yet).
+
+With `--jaeger`, Jaeger's trace search UI is at
+<http://localhost:16686/search>. The switch generates a runtime-only tracing
+config and starts Jaeger alongside agentgateway; `down` removes both
+containers. Because tracing uses that generated config, `--jaeger` and `-w`
+cannot be combined.
 
 ## Calling it
 
