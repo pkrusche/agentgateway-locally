@@ -54,6 +54,9 @@ PROG = os.path.basename(sys.argv[0])
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 SERVICE_FILE = SCRIPT_DIR / "service.toml"
+JAEGER_NAME = "agentgateway-jaeger"
+JAEGER_IMAGE = "jaegertracing/all-in-one:latest"
+JAEGER_CONFIG_FILE = "config-jaeger.yaml"
 
 OPENAI_PASS_ENTRY = os.environ.get("OPENAI_PASS_ENTRY", "openai-api-key")
 ANTHROPIC_PASS_ENTRY = os.environ.get("ANTHROPIC_PASS_ENTRY", "anthropic-api-key")
@@ -373,7 +376,61 @@ class DockerBackend:
         )
         return r.stdout.strip() if r.returncode == 0 else ""
 
-    def up(self, spec, writable):
+    def start_jaeger(self):
+        if self._exists(JAEGER_NAME):
+            self.down(JAEGER_NAME)
+        r = subprocess.run(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                JAEGER_NAME,
+                "-p",
+                "127.0.0.1:16686:16686",
+                "-e",
+                "COLLECTOR_OTLP_ENABLED=true",
+                JAEGER_IMAGE,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if r.returncode != 0:
+            die(f"'docker run' failed to start Jaeger:\n{r.stdout}")
+        state = wait_until_running(self, JAEGER_NAME)
+        if state != "running":
+            die(f"Jaeger did not stay up (state: {state or 'unknown'})")
+
+    def jaeger_endpoint(self):
+        # Reaching "running" doesn't guarantee the network endpoint has
+        # been attached yet, so poll rather than inspecting once.
+        deadline = time.monotonic() + STARTUP_TIMEOUT
+        while True:
+            r = subprocess.run(
+                [
+                    "docker",
+                    "inspect",
+                    "-f",
+                    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                    JAEGER_NAME,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if r.returncode != 0:
+                die("could not determine Jaeger's container address")
+            address = r.stdout.strip()
+            if address:
+                return f"http://{address}:4317"
+            if time.monotonic() >= deadline:
+                die("could not determine Jaeger's container address")
+            time.sleep(STARTUP_POLL_INTERVAL)
+
+    def up(self, spec, writable, config_file="config.yaml"):
         if self._exists(spec["name"]):
             subprocess.run(
                 ["docker", "rm", "-f", spec["name"]],
@@ -399,7 +456,11 @@ class DockerBackend:
             cmd += ["-v", resolve_volume(v)]
         cmd.append(spec["image"])
         if not writable:
-            cmd += spec["command"]
+            cmd += (
+                spec["command"]
+                if config_file == "config.yaml"
+                else ["-f", f"/config/{config_file}"]
+            )
 
         r = subprocess.run(
             cmd,
@@ -492,7 +553,58 @@ class ContainerBackend:
                 return item.get("status", {}).get("state", "")
         return ""
 
-    def up(self, spec, writable):
+    def start_jaeger(self):
+        self.down(JAEGER_NAME)
+        r = subprocess.run(
+            [
+                "container",
+                "run",
+                "-d",
+                "--name",
+                JAEGER_NAME,
+                "-p",
+                "127.0.0.1:16686:16686",
+                "-e",
+                "COLLECTOR_OTLP_ENABLED=true",
+                JAEGER_IMAGE,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        if r.returncode != 0:
+            die(f"'container run' failed to start Jaeger:\n{r.stdout}")
+        state = wait_until_running(self, JAEGER_NAME)
+        if state != "running":
+            die(f"Jaeger did not stay up (state: {state or 'unknown'})")
+
+    def jaeger_endpoint(self):
+        # The optional host-side DNS domain is not guaranteed to have been
+        # configured, so use the address assigned on the shared default
+        # network instead — reported under status.networks (configuration
+        # .networks only has the requested network name, not an address).
+        # Reaching "running" doesn't guarantee that address has been
+        # assigned yet, so poll rather than checking once.
+        deadline = time.monotonic() + STARTUP_TIMEOUT
+        while True:
+            for item in self._list():
+                if item.get("configuration", {}).get("id") != JAEGER_NAME:
+                    continue
+                for network in item.get("status", {}).get("networks", []):
+                    address = network.get("ipv4Address") or network.get(
+                        "ipv6Address", ""
+                    )
+                    address = address.partition("/")[0]
+                    if address:
+                        if ":" in address:
+                            address = f"[{address}]"
+                        return f"http://{address}:4317"
+            if time.monotonic() >= deadline:
+                die("could not determine Jaeger's container address")
+            time.sleep(STARTUP_POLL_INTERVAL)
+
+    def up(self, spec, writable, config_file="config.yaml"):
         subprocess.run(
             ["container", "delete", spec["name"]],
             stdout=subprocess.DEVNULL,
@@ -519,7 +631,11 @@ class ContainerBackend:
             cmd += ["-v", resolve_volume(v)]
         cmd.append(spec["image"])
         if not writable:
-            cmd += spec["command"]
+            cmd += (
+                spec["command"]
+                if config_file == "config.yaml"
+                else ["-f", f"/config/{config_file}"]
+            )
 
         r = subprocess.run(
             cmd,
@@ -604,7 +720,32 @@ def wait_until_running(backend, name):
         time.sleep(STARTUP_POLL_INTERVAL)
 
 
-def cmd_up(backend, spec, writable):
+def write_jaeger_config(config_dir, endpoint):
+    source = config_dir / "config.yaml"
+    try:
+        contents = source.read_text()
+    except OSError as e:
+        die(f"cannot read {source}: {e}")
+    marker = "config:\n"
+    if marker not in contents:
+        die(f"{source} has no top-level config section")
+    tracing = (
+        "config:\n"
+        "  tracing:\n"
+        f"    otlpEndpoint: {endpoint}\n"
+        "    randomSampling: true\n"
+    )
+    path = config_dir / JAEGER_CONFIG_FILE
+    path.write_text(contents.replace(marker, tracing, 1))
+    return path.name
+
+
+def cmd_up(backend, spec, writable, jaeger=False):
+    if jaeger and writable:
+        die(
+            "--jaeger cannot be combined with --writable; "
+            "Jaeger uses a generated config file"
+        )
     backend.check_prereqs()
     require_gateway_key(GATEWAY_PASS_ENTRY)
     require_ui_password(UI_PASS_ENTRY)
@@ -613,7 +754,6 @@ def cmd_up(backend, spec, writable):
         print(
             "Starting in writable mode — config/ is mounted read-write so the admin UI can save."
         )
-
     config_dir = volume_host_path(spec["config_volume"])
     config_dir.mkdir(parents=True, exist_ok=True)
     # Regenerated on every up, so rotating the password is just
@@ -643,7 +783,19 @@ def cmd_up(backend, spec, writable):
         pass_show(GATEWAY_PASS_ENTRY)
     )
 
-    backend.up(spec, writable)
+    config_file = "config.yaml"
+    if jaeger:
+        backend.start_jaeger()
+        try:
+            config_file = write_jaeger_config(config_dir, backend.jaeger_endpoint())
+        except SystemExit:
+            # jaeger_endpoint()/write_jaeger_config() die() on failure —
+            # without this, the Jaeger container it just started would be
+            # left running with nothing left to point at it.
+            backend.down(JAEGER_NAME)
+            raise
+
+    backend.up(spec, writable, config_file)
 
     state = wait_until_running(backend, spec["name"])
     if state != "running":
@@ -664,6 +816,8 @@ def cmd_up(backend, spec, writable):
         f"  UI          basic auth, username '{UI_USER}' — '{PROG} ui-password' prints the password."
     )
     print(f"  :4000/:3000 'Authorization: Bearer <key>' — '{PROG} key' prints the key.")
+    if jaeger:
+        print("  Jaeger      http://localhost:16686/search (all requests sampled)")
 
 
 def cmd_key():
@@ -723,11 +877,12 @@ def cmd_prune(spec, days):
 
 def cmd_down(backend, spec):
     backend.down(spec["name"])
+    backend.down(JAEGER_NAME)
 
 
-def cmd_restart(backend, spec, writable):
+def cmd_restart(backend, spec, writable, jaeger=False):
     cmd_down(backend, spec)
-    cmd_up(backend, spec, writable)
+    cmd_up(backend, spec, writable, jaeger)
 
 
 def cmd_logs(backend, spec):
@@ -738,6 +893,8 @@ def cmd_logs(backend, spec):
 def cmd_status(backend, spec):
     backend.check_prereqs()
     print(backend.status_line(spec["name"]))
+    if backend.state(JAEGER_NAME):
+        print(backend.status_line(JAEGER_NAME))
 
 
 def build_parser():
@@ -784,6 +941,11 @@ def build_parser():
         action="store_true",
         help="Mount config/ read-write so the admin UI can save edits.",
     )
+    up_p.add_argument(
+        "--jaeger",
+        action="store_true",
+        help="Start Jaeger and export all agentgateway traces to it.",
+    )
 
     sub.add_parser("down", help="Stop and remove the container.")
 
@@ -795,6 +957,11 @@ def build_parser():
         "--writable",
         action="store_true",
         help="Mount config/ read-write so the admin UI can save edits.",
+    )
+    restart_p.add_argument(
+        "--jaeger",
+        action="store_true",
+        help="Start Jaeger and export all agentgateway traces to it.",
     )
 
     sub.add_parser("logs", help="Follow container logs.")
@@ -837,17 +1004,18 @@ def main(argv):
     backend = get_backend(backend_name)
     spec = load_service()
     writable = getattr(args, "writable", False)
+    jaeger = getattr(args, "jaeger", False)
 
     if args.command == "setup":
         cmd_setup(backend)
     elif args.command == "up":
-        cmd_up(backend, spec, writable)
+        cmd_up(backend, spec, writable, jaeger)
     elif args.command == "down":
         backend.check_prereqs()
         cmd_down(backend, spec)
     elif args.command == "restart":
         backend.check_prereqs()
-        cmd_restart(backend, spec, writable)
+        cmd_restart(backend, spec, writable, jaeger)
     elif args.command == "logs":
         cmd_logs(backend, spec)
     elif args.command == "status":
