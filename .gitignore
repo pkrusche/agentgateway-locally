@@ -9,3 +9,6 @@
 __pycache__
 .ruff_cache
 .claude
+# project-sandbox — do not commit agent secrets
+.project-sandbox/
+.devcontainer/
