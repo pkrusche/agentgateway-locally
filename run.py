@@ -404,23 +404,31 @@ class DockerBackend:
             die(f"Jaeger did not stay up (state: {state or 'unknown'})")
 
     def jaeger_endpoint(self):
-        r = subprocess.run(
-            [
-                "docker",
-                "inspect",
-                "-f",
-                "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
-                JAEGER_NAME,
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            check=False,
-        )
-        address = r.stdout.strip()
-        if r.returncode != 0 or not address:
-            die("could not determine Jaeger's container address")
-        return f"http://{address}:4317"
+        # Reaching "running" doesn't guarantee the network endpoint has
+        # been attached yet, so poll rather than inspecting once.
+        deadline = time.monotonic() + STARTUP_TIMEOUT
+        while True:
+            r = subprocess.run(
+                [
+                    "docker",
+                    "inspect",
+                    "-f",
+                    "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}",
+                    JAEGER_NAME,
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False,
+            )
+            if r.returncode != 0:
+                die("could not determine Jaeger's container address")
+            address = r.stdout.strip()
+            if address:
+                return f"http://{address}:4317"
+            if time.monotonic() >= deadline:
+                die("could not determine Jaeger's container address")
+            time.sleep(STARTUP_POLL_INTERVAL)
 
     def up(self, spec, writable, config_file="config.yaml"):
         if self._exists(spec["name"]):
@@ -574,17 +582,27 @@ class ContainerBackend:
     def jaeger_endpoint(self):
         # The optional host-side DNS domain is not guaranteed to have been
         # configured, so use the address assigned on the shared default
-        # network instead.
-        for item in self._list():
-            if item.get("configuration", {}).get("id") != JAEGER_NAME:
-                continue
-            for network in item.get("networks", []):
-                address = network.get("address", "").partition("/")[0]
-                if address:
-                    if ":" in address:
-                        address = f"[{address}]"
-                    return f"http://{address}:4317"
-        die("could not determine Jaeger's container address")
+        # network instead — reported under status.networks (configuration
+        # .networks only has the requested network name, not an address).
+        # Reaching "running" doesn't guarantee that address has been
+        # assigned yet, so poll rather than checking once.
+        deadline = time.monotonic() + STARTUP_TIMEOUT
+        while True:
+            for item in self._list():
+                if item.get("configuration", {}).get("id") != JAEGER_NAME:
+                    continue
+                for network in item.get("status", {}).get("networks", []):
+                    address = network.get("ipv4Address") or network.get(
+                        "ipv6Address", ""
+                    )
+                    address = address.partition("/")[0]
+                    if address:
+                        if ":" in address:
+                            address = f"[{address}]"
+                        return f"http://{address}:4317"
+            if time.monotonic() >= deadline:
+                die("could not determine Jaeger's container address")
+            time.sleep(STARTUP_POLL_INTERVAL)
 
     def up(self, spec, writable, config_file="config.yaml"):
         subprocess.run(
@@ -768,7 +786,14 @@ def cmd_up(backend, spec, writable, jaeger=False):
     config_file = "config.yaml"
     if jaeger:
         backend.start_jaeger()
-        config_file = write_jaeger_config(config_dir, backend.jaeger_endpoint())
+        try:
+            config_file = write_jaeger_config(config_dir, backend.jaeger_endpoint())
+        except SystemExit:
+            # jaeger_endpoint()/write_jaeger_config() die() on failure —
+            # without this, the Jaeger container it just started would be
+            # left running with nothing left to point at it.
+            backend.down(JAEGER_NAME)
+            raise
 
     backend.up(spec, writable, config_file)
 

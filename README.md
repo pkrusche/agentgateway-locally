@@ -8,7 +8,7 @@ ports take an API key of their own, the admin UI takes basic auth.
 
 Runs under Docker, or Apple's
 [`container`](https://github.com/apple/container) CLI — the default on
-macOS when it's installed.
+macOS when it's installed. We need `container` >= 1.2.0.
 
 > ⚠️ 🤖 Made with the help of AI.
 

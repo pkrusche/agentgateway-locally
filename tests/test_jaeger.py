@@ -34,7 +34,7 @@ class ContainerJaegerTests(unittest.TestCase):
             return_value=[
                 {
                     "configuration": {"id": run.JAEGER_NAME},
-                    "networks": [{"address": "192.168.64.3/24"}],
+                    "status": {"networks": [{"ipv4Address": "192.168.64.3/24"}]},
                 }
             ]
         )
@@ -47,7 +47,7 @@ class ContainerJaegerTests(unittest.TestCase):
             return_value=[
                 {
                     "configuration": {"id": run.JAEGER_NAME},
-                    "networks": [{"address": "fd00::3/64"}],
+                    "status": {"networks": [{"ipv6Address": "fd00::3/64"}]},
                 }
             ]
         )
