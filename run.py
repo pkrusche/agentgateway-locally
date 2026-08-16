@@ -388,8 +388,6 @@ class DockerBackend:
                 JAEGER_NAME,
                 "-p",
                 "127.0.0.1:16686:16686",
-                "-p",
-                "127.0.0.1:4317:4317",
                 "-e",
                 "COLLECTOR_OTLP_ENABLED=true",
                 JAEGER_IMAGE,
@@ -558,8 +556,6 @@ class ContainerBackend:
                 JAEGER_NAME,
                 "-p",
                 "127.0.0.1:16686:16686",
-                "-p",
-                "127.0.0.1:4317:4317",
                 "-e",
                 "COLLECTOR_OTLP_ENABLED=true",
                 JAEGER_IMAGE,
@@ -576,9 +572,19 @@ class ContainerBackend:
             die(f"Jaeger did not stay up (state: {state or 'unknown'})")
 
     def jaeger_endpoint(self):
-        # Apple's container DNS exposes containers on the default network
-        # under <name>.test.
-        return f"http://{JAEGER_NAME}.test:4317"
+        # The optional host-side DNS domain is not guaranteed to have been
+        # configured, so use the address assigned on the shared default
+        # network instead.
+        for item in self._list():
+            if item.get("configuration", {}).get("id") != JAEGER_NAME:
+                continue
+            for network in item.get("networks", []):
+                address = network.get("address", "").partition("/")[0]
+                if address:
+                    if ":" in address:
+                        address = f"[{address}]"
+                    return f"http://{address}:4317"
+        die("could not determine Jaeger's container address")
 
     def up(self, spec, writable, config_file="config.yaml"):
         subprocess.run(

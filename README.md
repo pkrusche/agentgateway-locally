@@ -62,7 +62,8 @@ With `--jaeger`, Jaeger's trace search UI is at
 <http://localhost:16686/search>. The switch generates a runtime-only tracing
 config and starts Jaeger alongside agentgateway; `down` removes both
 containers. Because tracing uses that generated config, `--jaeger` and `-w`
-cannot be combined.
+cannot be combined. Only Jaeger's UI is published on the host; its OTLP port is
+used directly between the two containers.
 
 ## Calling it
 
