@@ -1,11 +1,6 @@
 # yaml-language-server: $schema=https://agentgateway.dev/schema/config
-#
-# Annotated field by field in docs/configuration.md. The explanation
-# lives there rather than in comments here because agentgateway rewrites
-# this file whenever the admin UI saves in -w mode, and the rewrite
-# strips every comment — including, eventually, this one.
 config:
-  adminAddr: "off"
+  adminAddr: off
   logging:
     database:
       url: sqlite:///data/request-logs.db
@@ -28,6 +23,7 @@ llm:
       - authorization
       - content-type
       - anthropic-version
+      - '*'
       maxAge: 10m
   providers:
   - name: openai
@@ -59,6 +55,11 @@ llm:
       reference: openai
     params:
       model: gpt-5.6-luna
+  - name: gpt-6-astra
+    provider:
+      reference: openai
+    params:
+      model: gpt-6-astra
   - name: claude-opus-5
     provider:
       reference: anthropic
@@ -79,6 +80,11 @@ llm:
       reference: anthropic
     params:
       model: claude-fable-5
+  - name: claude-fable-5-1
+    provider:
+      reference: anthropic
+    params:
+      model: claude-fable-5-1
 mcp:
   port: 3000
   targets: []
