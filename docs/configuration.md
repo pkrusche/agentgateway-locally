@@ -94,12 +94,21 @@ right provider with the right upstream key.
 Each model can also define request defaults beside `params`. These are
 request-body fields, rather than upstream connection settings. The
 configured defaults use medium reasoning for `gpt-5-mini` and high
-reasoning for the larger OpenAI models:
+reasoning for the larger OpenAI models, using the Responses API format:
 
 ```yaml
 defaults:
-  reasoning_effort: high
+  reasoning:
+    effort: high
 ```
+
+Use `/v1/responses` for these OpenAI models (in pi, set
+`api: "openai-responses"` and `baseUrl: "http://localhost:4000/v1"`).
+Chat Completions uses `reasoning_effort` instead; these defaults are
+request-body fields and are not interchangeable between the two APIs.
+Clients using Chat Completions need separate model entries with defaults
+for that API, or no gateway reasoning defaults and client-supplied effort.
+Do not set both field formats on the same model.
 
 The Claude models use Anthropic's adaptive-thinking fields instead:
 
@@ -113,8 +122,8 @@ defaults:
 
 These are defaults, so a client-provided value takes precedence. Use a
 model's `overrides` map when the gateway must force a value on every
-request. The field names are provider-specific because agentgateway
-translates the incoming request format to the selected upstream API.
+request. Default field names must match the upstream request API; do not
+assume agentgateway translates fields added by these defaults.
 
 ### `mcp`
 

@@ -41,35 +41,40 @@ llm:
     params:
       model: gpt-5-mini
     defaults:
-      reasoning_effort: medium
+      reasoning:
+        effort: medium
   - name: gpt-5.6-sol
     provider:
       reference: openai
     params:
       model: gpt-5.6-sol
     defaults:
-      reasoning_effort: high
+      reasoning:
+        effort: high
   - name: gpt-5.6-terra
     provider:
       reference: openai
     params:
       model: gpt-5.6-terra
     defaults:
-      reasoning_effort: high
+      reasoning:
+        effort: high
   - name: gpt-5.6-luna
     provider:
       reference: openai
     params:
       model: gpt-5.6-luna
     defaults:
-      reasoning_effort: high
+      reasoning:
+        effort: high
   - name: gpt-6-astra
     provider:
       reference: openai
     params:
       model: gpt-6-astra
     defaults:
-      reasoning_effort: high
+      reasoning:
+        effort: high
   - name: claude-opus-5
     provider:
       reference: anthropic
