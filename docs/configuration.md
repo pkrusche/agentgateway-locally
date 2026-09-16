@@ -91,6 +91,31 @@ client-facing model names that map onto them. A client asks for
 `claude-sonnet-5` or `gpt-5-mini` and agentgateway routes it to the
 right provider with the right upstream key.
 
+Each model can also define request defaults beside `params`. These are
+request-body fields, rather than upstream connection settings. The
+configured defaults use medium reasoning for `gpt-5-mini` and high
+reasoning for the larger OpenAI models:
+
+```yaml
+defaults:
+  reasoning_effort: high
+```
+
+The Claude models use Anthropic's adaptive-thinking fields instead:
+
+```yaml
+defaults:
+  thinking:
+    type: adaptive
+  output_config:
+    effort: high
+```
+
+These are defaults, so a client-provided value takes precedence. Use a
+model's `overrides` map when the gateway must force a value on every
+request. The field names are provider-specific because agentgateway
+translates the incoming request format to the selected upstream API.
+
 ### `mcp`
 
 Published on `:3000` with the same `apiKey` policy as the LLM listener.
