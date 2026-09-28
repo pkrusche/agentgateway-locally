@@ -75,6 +75,30 @@ llm:
     defaults:
       reasoning:
         effort: high
+  - name: gpt-6-sol
+    provider:
+      reference: openai
+    params:
+      model: gpt-6-sol
+    defaults:
+      reasoning:
+        effort: high
+  - name: gpt-6-terra
+    provider:
+      reference: openai
+    params:
+      model: gpt-6-terra
+    defaults:
+      reasoning:
+        effort: high
+  - name: gpt-6-luna
+    provider:
+      reference: openai
+    params:
+      model: gpt-6-luna
+    defaults:
+      reasoning:
+        effort: high
   - name: claude-opus-5
     provider:
       reference: anthropic
