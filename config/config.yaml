@@ -83,14 +83,6 @@ llm:
     defaults:
       reasoning:
         effort: high
-  - name: gpt-6-terra
-    provider:
-      reference: openai
-    params:
-      model: gpt-6-terra
-    defaults:
-      reasoning:
-        effort: high
   - name: gpt-6-luna
     provider:
       reference: openai
@@ -109,11 +101,31 @@ llm:
         type: adaptive
       output_config:
         effort: high
+  - name: claude-opus-5-5
+    provider:
+      reference: anthropic
+    params:
+      model: claude-opus-5-5
+    defaults:
+      thinking:
+        type: adaptive
+      output_config:
+        effort: high
   - name: claude-sonnet-5
     provider:
       reference: anthropic
     params:
       model: claude-sonnet-5
+    defaults:
+      thinking:
+        type: adaptive
+      output_config:
+        effort: high
+  - name: claude-sonnet-5-5
+    provider:
+      reference: anthropic
+    params:
+      model: claude-sonnet-5-5
     defaults:
       thinking:
         type: adaptive
