@@ -47,7 +47,7 @@ provider key, in plaintext, in a git-tracked file, one `git add -A` away
 from being committed.
 
 Saving from the UI is otherwise safe in this respect: it preserves the
-`$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY` placeholders as written and
+`$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY` / `$GEMINI_API_KEY` placeholders as written and
 doesn't substitute the resolved values back in. So leave those fields
 alone — the keys belong in `pass`, and `run.py` is what gets them to the
 gateway. If it happens by accident, rotate the key at the provider;

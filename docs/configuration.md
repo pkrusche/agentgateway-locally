@@ -14,7 +14,7 @@ the first time someone clicks Save — hence this page.
 ## `config/config.yaml`
 
 Safe to commit: it only ever contains `$OPENAI_API_KEY` /
-`$ANTHROPIC_API_KEY` placeholders, never resolved values. See
+`$ANTHROPIC_API_KEY` / `$GEMINI_API_KEY` placeholders, never resolved values. See
 [Admin UI → Don't type a real API key into the UI](admin-ui.md#dont-type-a-real-api-key-into-the-ui)
 for the one way that stops being true.
 
@@ -85,8 +85,9 @@ allowing it would only advertise a way in that doesn't work.
 
 ### `llm.providers` / `llm.models`
 
-Two upstream providers (`openai`, `anthropic`) resolving their
-credentials from `$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY`, and the
+Three upstream providers (`openai`, `anthropic`, `gemini`) resolving
+their credentials from `$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY` /
+`$GEMINI_API_KEY`, and the
 client-facing model names that map onto them. A client asks for
 `claude-sonnet-5` or `gpt-5-mini` and agentgateway routes it to the
 right provider with the right upstream key.
@@ -119,6 +120,17 @@ defaults:
   output_config:
     effort: high
 ```
+
+The Gemini models go to the Gemini API (Google AI Studio,
+`generativelanguage.googleapis.com`) with the key from the
+`gemini-api-key` `pass` entry — not Vertex AI, which would be a separate
+`vertex` provider with Google Cloud credentials instead of an API key.
+agentgateway talks to Gemini through its OpenAI-compatible endpoint, so
+call these models via `/v1/chat/completions`. They carry no `defaults`:
+Gemini 3 models already think dynamically at their highest level unless
+told otherwise, and a client that wants less can send Chat Completions'
+`reasoning_effort` itself. The model list mirrors what the `gcp.gemini`
+section of `base-costs.json` prices; add others the same way.
 
 These are defaults, so a client-provided value takes precedence. Use a
 model's `overrides` map when the gateway must force a value on every

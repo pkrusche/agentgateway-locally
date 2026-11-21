@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Setup and lifecycle wrapper for the agentgateway container.
 
-Reads the OpenAI and Anthropic API keys from `pass` and passes them
+Reads the OpenAI, Anthropic and Gemini API keys from `pass` and passes them
 into the container just long enough to start it: config/config.yaml
 only contains $VAR_NAME placeholders that agentgateway resolves from
 the container's environment at runtime, so this setup writes no key to
@@ -13,7 +13,7 @@ agentgateway` / `container inspect agentgateway` will print them, and
 The gateway's own API key — the one clients send to agentgateway, also
 kept in `pass` — is the exception: only its SHA-256 is handed to the
 container, so that one isn't recoverable from the runtime at all. The
-admin UI's basic-auth password (a fourth `pass` entry) works the same
+admin UI's basic-auth password (another `pass` entry) works the same
 way: only its bcrypt hash is written, to config/htpasswd.
 
 The container itself (image, ports, env, volumes) is described once in
@@ -60,6 +60,7 @@ JAEGER_CONFIG_FILE = "config-jaeger.yaml"
 
 OPENAI_PASS_ENTRY = os.environ.get("OPENAI_PASS_ENTRY", "openai-api-key")
 ANTHROPIC_PASS_ENTRY = os.environ.get("ANTHROPIC_PASS_ENTRY", "anthropic-api-key")
+GEMINI_PASS_ENTRY = os.environ.get("GEMINI_PASS_ENTRY", "gemini-api-key")
 # The gateway's own API key: what clients send to agentgateway, as
 # opposed to the provider keys agentgateway sends upstream.
 GATEWAY_PASS_ENTRY = os.environ.get("GATEWAY_PASS_ENTRY", "agentgateway-api-key")
@@ -198,7 +199,7 @@ def pass_show_or_dummy(entry, label, dummy):
 
     Unlike the gateway key or UI password, a provider key with nothing
     behind it isn't fatal to starting agentgateway — e.g. only one of
-    OpenAI/Anthropic might be in use. Requests routed to the
+    OpenAI/Anthropic/Gemini might be in use. Requests routed to the
     unconfigured provider will just fail upstream with a 401 instead of
     never being attempted.
     """
@@ -693,6 +694,7 @@ def cmd_setup(backend):
     backend.check_prereqs()
     require_pass_entry(OPENAI_PASS_ENTRY, "OpenAI API key")
     require_pass_entry(ANTHROPIC_PASS_ENTRY, "Anthropic API key")
+    require_pass_entry(GEMINI_PASS_ENTRY, "Gemini API key")
     require_gateway_key(GATEWAY_PASS_ENTRY)
     require_ui_password(UI_PASS_ENTRY)
     print(f"Setup complete. Run '{PROG} up' to start agentgateway.")
@@ -775,6 +777,9 @@ def cmd_up(backend, spec, writable, jaeger=False):
     )
     os.environ["ANTHROPIC_API_KEY"] = pass_show_or_dummy(
         ANTHROPIC_PASS_ENTRY, "Anthropic API key", "sk-ant-dummy-key-not-configured"
+    )
+    os.environ["GEMINI_API_KEY"] = pass_show_or_dummy(
+        GEMINI_PASS_ENTRY, "Gemini API key", "dummy-gemini-key-not-configured"
     )
     # Only the hash crosses into the container: agentgateway's `keyHash`
     # form compares incoming keys against it, so the gateway key itself
@@ -905,6 +910,7 @@ def build_parser():
             "Env overrides:\n"
             f"  OPENAI_PASS_ENTRY      pass path for the OpenAI key      (default: {OPENAI_PASS_ENTRY})\n"
             f"  ANTHROPIC_PASS_ENTRY   pass path for the Anthropic key   (default: {ANTHROPIC_PASS_ENTRY})\n"
+            f"  GEMINI_PASS_ENTRY      pass path for the Gemini key      (default: {GEMINI_PASS_ENTRY})\n"
             f"  GATEWAY_PASS_ENTRY     pass path for the gateway's key   (default: {GATEWAY_PASS_ENTRY})\n"
             f"  UI_PASS_ENTRY          pass path for the UI password     (default: {UI_PASS_ENTRY})\n"
             f"  GATEWAY_UI_USER        username for the UI's basic auth  (default: {UI_USER})\n"
@@ -928,7 +934,7 @@ def build_parser():
         "setup",
         help=(
             "Check prerequisites and create any missing pass entries: the "
-            "OpenAI/Anthropic keys, plus agentgateway's own API key."
+            "OpenAI/Anthropic/Gemini keys, plus agentgateway's own API key."
         ),
     )
 

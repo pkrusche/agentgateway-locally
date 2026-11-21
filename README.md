@@ -1,7 +1,7 @@
 # agentgateway, locally
 
 Runs [agentgateway](https://agentgateway.dev) in a container as a local
-LLM proxy in front of OpenAI and Anthropic. Provider keys come from
+LLM proxy in front of OpenAI, Anthropic and Google Gemini. Provider keys come from
 [`pass`](https://www.passwordstore.org) at container start and are never
 written to disk. All three listeners are authenticated: the LLM and MCP
 ports take an API key of their own, the admin UI takes basic auth.
@@ -18,8 +18,9 @@ macOS when it's installed. We need `container` >= 1.2.0.
 ./run.py setup
 ```
 
-Checks prerequisites and walks you through the four `pass` entries it
-needs: your `openai-api-key` and `anthropic-api-key`, plus two local
+Checks prerequisites and walks you through the five `pass` entries it
+needs: your `openai-api-key`, `anthropic-api-key` and `gemini-api-key`
+(a [Gemini API](https://aistudio.google.com/apikey) key), plus two local
 secrets it offers to generate for you — `agentgateway-api-key` (what
 clients present to the gateway) and `agentgateway-ui-password` (the
 admin UI login, username `admin`).

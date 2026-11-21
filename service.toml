@@ -47,7 +47,7 @@ ports = [
 # so the value is inherited from run.py's own environment instead of
 # appearing on the `docker run`/`container run` command line where any
 # local process could read it out of `ps`. run.py populates
-# OPENAI_API_KEY/ANTHROPIC_API_KEY from `pass`, and
+# OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY from `pass`, and
 # GATEWAY_API_KEY_SHA256 with the *hash* of the gateway's own API key
 # (the key itself never enters the container). NAME=default entries are
 # passed as literal values and fall back to that default when unset
@@ -55,6 +55,7 @@ ports = [
 env = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
+  "GEMINI_API_KEY",
   "GATEWAY_API_KEY_SHA256",
   "RUST_LOG=info",
 ]

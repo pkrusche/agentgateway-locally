@@ -168,7 +168,7 @@ on the bind address.
 ## Where the keys live
 
 `run.py up` shells out to `pass show`, sets the results as
-`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` in its own environment just long
+`OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` in its own environment just long
 enough to start the container, then exits. It passes them to the runtime
 *by name* (`-e OPENAI_API_KEY`, no value), so the keys never appear on
 the `docker run` / `container run` command line where another local
