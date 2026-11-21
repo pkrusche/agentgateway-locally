@@ -5,15 +5,15 @@ one row per proxied request — model, tokens, cost, status — and, for
 requests where agentgateway captured payloads, the prompt and the
 completion in full.
 
-`run.py` keeps `data/` at mode 0700 and the file is gitignored, but
+`agw` keeps `data/` at mode 0700 and the file is gitignored, but
 nothing prunes it on its own, so months of conversation content will
 pile up if you let it. It's also what the admin UI's Logs page reads,
 which is part of why that UI is [behind basic
 auth](security.md#the-admin-ui-basic-auth).
 
 ```sh
-./run.py prune             # delete rows older than 30 days
-./run.py prune --days 7    # or pick your own window
+uv run agw prune             # delete rows older than 30 days
+uv run agw prune --days 7    # or pick your own window
 ```
 
 Payload rows go with their request row (foreign key cascade), and the
@@ -26,7 +26,7 @@ if you use the gateway regularly.
 `prune` sets `PRAGMA secure_delete = ON` before deleting, so pages it
 frees are overwritten rather than merely unlinked. (Many sqlite builds,
 including the one CPython typically ships, already do this by default —
-the pragma makes it independent of which interpreter you run `run.py`
+the pragma makes it independent of which interpreter uv runs `agw`
 with.)
 
 That is not the whole story, though: because the `VACUUM` is skipped
@@ -39,7 +39,7 @@ If the point is to actually get the content off disk, stop the container
 first so the `VACUUM` can run:
 
 ```sh
-./run.py down
-./run.py prune
-./run.py up
+uv run agw down
+uv run agw prune
+uv run agw up
 ```

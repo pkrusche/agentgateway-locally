@@ -1,5 +1,6 @@
-#!/usr/bin/env python3
 """Setup and lifecycle wrapper for the agentgateway container.
+
+Run as `uv run agw <command>` from the project checkout.
 
 Reads the OpenAI, Anthropic and Gemini API keys from `pass` and passes them
 into the container just long enough to start it: config/config.yaml
@@ -8,7 +9,7 @@ the container's environment at runtime, so this setup writes no key to
 disk itself. The provider keys do live in the container's runtime
 metadata for as long as the container exists, though — `docker inspect
 agentgateway` / `container inspect agentgateway` will print them, and
-`run.py down` is what clears that.
+`uv run agw down` is what clears that.
 
 The gateway's own API key — the one clients send to agentgateway, also
 kept in `pass` — is the exception: only its SHA-256 is handed to the
@@ -22,10 +23,8 @@ service.toml, not duplicated here. Runs via `docker`, or Apple's
 --backend container — on macOS that's the default whenever the
 `container` binary is installed, otherwise `docker` is used.
 
-Stdlib only — no pip install required. Needs Python 3.11+ for tomllib
-(see the version check right below) — if the `python3` on PATH is
-older, run this with a newer interpreter directly, e.g.
-`python3.12 run.py ...`.
+Stdlib only — no runtime dependencies. Needs Python 3.11+ for tomllib,
+which pyproject.toml's requires-python makes uv pick (or download).
 """
 
 import argparse
@@ -42,18 +41,19 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from shutil import which
 
-if sys.version_info < (3, 11):
-    sys.exit(
-        f"error: run.py needs Python 3.11+ for tomllib (found {platform.python_version()} "
-        f"at {sys.executable}). Install a newer python3 (e.g. via Homebrew or pyenv) and "
-        "either put it first on PATH or invoke it directly, e.g. `python3.12 run.py ...`."
-    )
 import tomllib
 
-PROG = os.path.basename(sys.argv[0])
+# How users invoke this — used in usage text and in the hints printed
+# by error messages, so they can be copy-pasted as-is.
+PROG = "uv run agw"
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-SERVICE_FILE = SCRIPT_DIR / "service.toml"
+# The project checkout: src/agw/cli.py -> repo root. uv installs the
+# project in editable mode, so __file__ is the source file in the
+# checkout, not a copy in site-packages — which is what lets
+# service.toml's ./config and ./data resolve to the checkout regardless
+# of the current directory.
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+SERVICE_FILE = PROJECT_DIR / "service.toml"
 JAEGER_NAME = "agentgateway-jaeger"
 JAEGER_IMAGE = "jaegertracing/all-in-one:latest"
 JAEGER_CONFIG_FILE = "config-jaeger.yaml"
@@ -86,7 +86,10 @@ def die(msg):
 
 def load_service():
     if not SERVICE_FILE.exists():
-        die(f"{SERVICE_FILE} not found")
+        die(
+            f"{SERVICE_FILE} not found — agw must run from its project "
+            f"checkout (an editable install, which is what `uv run` sets up)"
+        )
     with SERVICE_FILE.open("rb") as f:
         try:
             return tomllib.load(f)
@@ -98,19 +101,19 @@ def resolve_volume(raw, readonly=False):
     """'./config:/config' -> '<abs-path>/config:/config[:ro]'."""
     host, _, container = raw.partition(":")
     if host == ".":
-        host = str(SCRIPT_DIR)
+        host = str(PROJECT_DIR)
     elif host.startswith("./"):
-        host = str(SCRIPT_DIR / host[2:])
+        host = str(PROJECT_DIR / host[2:])
     spec = f"{host}:{container}"
     return f"{spec}:ro" if readonly else spec
 
 
 def host_path(raw):
-    """'./data' -> '<script-dir>/data'; absolute paths pass through."""
+    """'./data' -> '<project-dir>/data'; absolute paths pass through."""
     if raw == ".":
-        return SCRIPT_DIR
+        return PROJECT_DIR
     if raw.startswith("./"):
-        return SCRIPT_DIR / raw[2:]
+        return PROJECT_DIR / raw[2:]
     return Path(raw)
 
 
@@ -224,7 +227,7 @@ def require_gateway_key(entry):
     if pass_has(entry):
         return
     # All of this goes to stderr (and `pass insert`'s own chatter to
-    # /dev/null) so that `$(run.py key)` only ever captures the key.
+    # /dev/null) so that `$(uv run agw key)` only ever captures the key.
     print(
         f"No pass entry at '{entry}' for agentgateway's own API key —\n"
         "the key clients must present when they call the gateway.\n"
@@ -1003,7 +1006,7 @@ def build_parser():
     return parser
 
 
-def main(argv):
+def main(argv=None):
     args = build_parser().parse_args(argv)
 
     backend_name = args.backend or default_backend_name()
@@ -1032,7 +1035,3 @@ def main(argv):
         cmd_ui_password()
     elif args.command == "prune":
         cmd_prune(spec, args.days)
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])

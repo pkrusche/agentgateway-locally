@@ -1,29 +1,29 @@
 # Backends: Apple `container` vs Docker
 
-`run.py` drives either runtime off the same `service.toml`. On macOS it
+`agw` drives either runtime off the same `service.toml`. On macOS it
 picks Apple's [`container`](https://github.com/apple/container)
 automatically whenever the binary is on `PATH`, otherwise `docker`.
 Force one with `--backend {docker,container}` *before* the subcommand:
 
 ```sh
-./run.py --backend docker up
+uv run agw --backend docker up
 ```
 
 ## Running under Apple's `container` CLI
 
 ```sh
 container system start          # first time only — starts the container VM services
-./run.py setup
-./run.py up          # or `up -w` for writable config
-./run.py status
-./run.py logs
-./run.py down
+uv run agw setup
+uv run agw up          # or `up -w` for writable config
+uv run agw status
+uv run agw logs
+uv run agw down
 ```
 
 `container system status` must report `running`; if not, run `container
 system start` first.
 
-There's no compose equivalent for `container`, so `run.py` runs
+There's no compose equivalent for `container`, so `agw` runs
 `container run` directly off the same `service.toml` used for `docker`,
 with the same env, volumes and read-only-by-default / `-w` read-write
 mount split. Three differences are worth knowing:
@@ -34,7 +34,7 @@ mount split. Three differences are worth knowing:
   alike and the provider keys don't outlive a reboot in container
   runtime metadata (see [Security → Where the keys
   live](security.md#where-the-keys-live)). A crash or a reboot won't
-  bring agentgateway back on its own: rerun `./run.py up`.
+  bring agentgateway back on its own: rerun `uv run agw up`.
 - **Always recreated.** `up`/`restart` delete and recreate the container
   rather than reusing it, since `container run --name` errors on a
   leftover stopped container.
@@ -64,10 +64,10 @@ access for your terminal app *and* for `container-runtime-linux`, then:
 
 ```sh
 container system stop && container system start
-./run.py up
+uv run agw up
 ```
 
 (An earlier version of this project worked around this with a
-hand-rolled `socat`/`nc` port relay in `run.py`, before we realized it
+hand-rolled `socat`/`nc` port relay in `run.py` (as `agw` was then), before we realized it
 was a permission issue rather than a forwarding bug. Not needed once the
 grant is in place, so it isn't in the code.)

@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-import run
+from agw import cli as run
 
 
 class JaegerConfigTests(unittest.TestCase):

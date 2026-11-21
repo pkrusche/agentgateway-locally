@@ -12,17 +12,17 @@
 #
 #   checks/auth.sh
 #   GATEWAY_HOST=192.168.64.3 checks/auth.sh    # the vmnet address
-#   RUN_PY="python3.12 run.py" checks/auth.sh   # older python3 on PATH
+#   AGW=.venv/bin/agw checks/auth.sh            # skip uv's sync step
 #
 # Env overrides: GATEWAY_HOST, LLM_PORT, MCP_PORT, UI_PORT, GATEWAY_KEY,
-# UI_USER, UI_PASSWORD, RUN_PY.
+# UI_USER, UI_PASSWORD, AGW.
 #
 # GATEWAY_KEY/UI_PASSWORD only exist so the positive controls can run
 # where `pass` can't be reached; leave them unset normally, since an
 # exported secret is visible to every child process.
 #
 # Exit status is 0 only if every check passed. Needs the gateway
-# running (./run.py up).
+# running (uv run agw up).
 
 set -u
 
@@ -30,11 +30,10 @@ HOST="${GATEWAY_HOST:-127.0.0.1}"
 LLM_PORT="${LLM_PORT:-4000}"
 MCP_PORT="${MCP_PORT:-3000}"
 UI_PORT="${UI_PORT:-15000}"
-# Word-split on purpose, so a multi-word command works — needed where
-# the `python3` on PATH is older than 3.11 and run.py's own shebang
-# can't run it:  RUN_PY="python3.12 run.py" checks/auth.sh
+# Word-split on purpose, so the default multi-word command (and any
+# override) works.
 # shellcheck disable=SC2206
-RUN_PY_CMD=(${RUN_PY:-./run.py})
+AGW_CMD=(${AGW:-uv run agw})
 
 cd "$(dirname "$0")/.." || exit 1
 
@@ -150,16 +149,16 @@ check_ui() {
 #
 # The key is read into a shell variable and handed to curl through a
 # config file on stdin, never as an argument: curl's argv is readable by
-# any local process via `ps`. Same reasoning as env_args() in run.py.
+# any local process via `ps`. Same reasoning as env_args() in src/agw/cli.py.
 # See docs/security.md#the-gateway-key-on-the-command-line.
 check_positive_controls() {
   echo
   echo "Positive controls — correct credentials must be accepted"
 
   local key code
-  key="${GATEWAY_KEY:-$("${RUN_PY_CMD[@]}" key 2>/dev/null)}"
+  key="${GATEWAY_KEY:-$("${AGW_CMD[@]}" key 2>/dev/null)}"
   if [ -z "$key" ]; then
-    skip "authenticated request to /v1/models (no key — '${RUN_PY_CMD[*]} key' failed; is pass unlocked? see RUN_PY)"
+    skip "authenticated request to /v1/models (no key — '${AGW_CMD[*]} key' failed; is pass unlocked? see AGW)"
   else
     code="$(printf 'header = "Authorization: Bearer %s"\n' "$key" |
       curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
@@ -172,9 +171,9 @@ check_positive_controls() {
 
   local user password
   user="${UI_USER:-${GATEWAY_UI_USER:-admin}}"
-  password="${UI_PASSWORD:-$("${RUN_PY_CMD[@]}" ui-password 2>/dev/null)}"
+  password="${UI_PASSWORD:-$("${AGW_CMD[@]}" ui-password 2>/dev/null)}"
   if [ -z "$password" ]; then
-    skip "authenticated request to /ui/ (no password — '${RUN_PY_CMD[*]} ui-password' failed; is pass unlocked? see RUN_PY)"
+    skip "authenticated request to /ui/ (no password — '${AGW_CMD[*]} ui-password' failed; is pass unlocked? see AGW)"
   else
     code="$(printf 'user = "%s:%s"\n' "$user" "$password" |
       curl -s -o /dev/null -w '%{http_code}' --max-time 10 \

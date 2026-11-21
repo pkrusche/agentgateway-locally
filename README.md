@@ -15,7 +15,7 @@ macOS when it's installed. We need `container` >= 1.2.0.
 ## Setup
 
 ```sh
-./run.py setup
+uv run agw setup
 ```
 
 Checks prerequisites and walks you through the five `pass` entries it
@@ -25,36 +25,32 @@ secrets it offers to generate for you — `agentgateway-api-key` (what
 clients present to the gateway) and `agentgateway-ui-password` (the
 admin UI login, username `admin`).
 
-Needs Python 3.11+; no `pip install`, `run.py` is stdlib-only.
-
-On many macOS machines the `python3` on `PATH` is Apple's 3.9, which is
-too old for the stdlib `tomllib` `run.py` parses `service.toml` with — so
-`./run.py …` exits with a version error and every example below needs an
-explicit interpreter instead:
-
-```sh
-python3.12 run.py setup    # or python3.13, 3.14, ...
-```
+Needs [uv](https://docs.astral.sh/uv/). `agw` is a stdlib-only Python
+package with no dependencies to install; the first `uv run` creates
+`.venv/` and installs it in editable mode, using a Python 3.11+ it finds
+on the machine or downloads (`tomllib`, which parses `service.toml`,
+needs 3.11). Run the commands from the repo checkout, or from elsewhere
+with `uv run --project /path/to/checkout agw …`.
 
 ## Run it
 
 ```sh
-./run.py up          # reads the keys from pass, starts the container
-./run.py up -w       # same, but config/ is read-write so the UI can save
-./run.py up --jaeger # also start Jaeger and export traces for every request
-./run.py status      # container state (running / not created / ...)
-./run.py logs        # follow logs
-./run.py restart     # re-reads keys from pass, restarts
-./run.py down        # stop and remove the container
-./run.py key         # print the gateway's own API key (for clients)
-./run.py ui-password # print the admin UI's basic-auth password
-./run.py prune       # drop request-log rows older than 30 days
+uv run agw up          # reads the keys from pass, starts the container
+uv run agw up -w       # same, but config/ is read-write so the UI can save
+uv run agw up --jaeger # also start Jaeger and export traces for every request
+uv run agw status      # container state (running / not created / ...)
+uv run agw logs        # follow logs
+uv run agw restart     # re-reads keys from pass, restarts
+uv run agw down        # stop and remove the container
+uv run agw key         # print the gateway's own API key (for clients)
+uv run agw ui-password # print the admin UI's basic-auth password
+uv run agw prune       # drop request-log rows older than 30 days
 ```
 
 Once it's up:
 
 - **Admin UI** — <http://localhost:15000/ui/>, username `admin`, password
-  from `./run.py ui-password`.
+  from `uv run agw ui-password`.
 - **LLM data plane** — `http://localhost:4000`, OpenAI- and
   Anthropic-compatible (`/v1/chat/completions`, `/v1/messages`).
 - **MCP** — `http://localhost:3000` (no targets configured yet).
@@ -74,7 +70,7 @@ which take it there rather than in `x-api-key`:
 
 ```sh
 curl http://localhost:4000/v1/chat/completions \
-  -H "Authorization: Bearer $(./run.py key)" \
+  -H "Authorization: Bearer $(uv run agw key)" \
   -H 'content-type: application/json' \
   -d '{"model":"claude-sonnet-5","messages":[{"role":"user","content":"hi"}]}'
 ```
@@ -88,7 +84,7 @@ care and the form that avoids it.
 
 For SDKs, point the base URL at the gateway and pass that key as the
 SDK's credential — e.g. `OPENAI_BASE_URL=http://localhost:4000/v1` with
-`OPENAI_API_KEY=$(./run.py key)`. For the Anthropic SDKs use the
+`OPENAI_API_KEY=$(uv run agw key)`. For the Anthropic SDKs use the
 auth-token option (`ANTHROPIC_AUTH_TOKEN` / `auth_token`), which sends
 `Authorization: Bearer`, rather than `ANTHROPIC_API_KEY`, which sends
 `x-api-key` and won't authenticate here.

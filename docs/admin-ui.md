@@ -1,20 +1,20 @@
 # Admin UI
 
 <http://localhost:15000/ui/>. The browser prompts for username `admin`
-and the password from `./run.py ui-password` — see
+and the password from `uv run agw ui-password` — see
 [Security → The admin UI](security.md#the-admin-ui-basic-auth) for how
 that's wired up and how to rotate it.
 
 The UI can view config, browse the request logs, and run requests
 through the playground. Note that the playground can't fill the gateway
 API key in for you — the config holds only a hash of it — so paste the
-output of `./run.py key` into its API-key field.
+output of `uv run agw key` into its API-key field.
 
 Saving config edits or refreshing the cost catalog needs `-w`.
 
 ## Editing config (or refreshing the cost catalog) from the UI
 
-By default `run.py up` mounts `config/` **read-only** — the admin UI can
+By default `uv run agw up` mounts `config/` **read-only** — the admin UI can
 view config and the cost catalog, but any attempt to save an edit or
 refresh `base-costs.json` fails with "Permission denied" — and that
 refresh is the only way to (re)generate the cost catalog, which isn't
@@ -23,7 +23,7 @@ tracked in the repo. Pass `-w` (or
 `-f /config/config.yaml` so agentgateway manages the directory itself:
 
 ```sh
-./run.py up -w
+uv run agw up -w
 ```
 
 That's agentgateway's own documented pattern for UI-editable config. A
@@ -49,7 +49,7 @@ from being committed.
 Saving from the UI is otherwise safe in this respect: it preserves the
 `$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY` / `$GEMINI_API_KEY` placeholders as written and
 doesn't substitute the resolved values back in. So leave those fields
-alone — the keys belong in `pass`, and `run.py` is what gets them to the
+alone — the keys belong in `pass`, and `agw` is what gets them to the
 gateway. If it happens by accident, rotate the key at the provider;
 `git checkout config/config.yaml` only removes it from the working tree,
 not from any commit you already made.
@@ -71,4 +71,4 @@ much larger change than whatever you actually edited.
 
 So start with `-w` only when you intend to edit something, `git diff
 config/` afterwards to see exactly what changed, and go back to a plain
-`./run.py restart` (read-only, `-f`-pinned) when you're done.
+`uv run agw restart` (read-only, `-f`-pinned) when you're done.

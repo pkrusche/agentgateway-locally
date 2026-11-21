@@ -1,7 +1,7 @@
 # Single source of truth for how to run the agentgateway container.
-# Read by run.py (stdlib tomllib), which drives it via either `docker`
+# Read by agw (`uv run agw`, stdlib tomllib), which drives it via either `docker`
 # or Apple's `container` CLI (--backend container) — there is no
-# separate docker-compose.yml; run.py builds the `docker run`/
+# separate docker-compose.yml; agw builds the `docker run`/
 # `container run` invocation straight from this file.
 #
 # Also written up in docs/configuration.md. Unlike config/config.yaml,
@@ -21,8 +21,8 @@ image = "cr.agentgateway.dev/agentgateway:v1.4.1@sha256:efd79355b89094a8225a9db4
 # Apple's `container` CLI has no equivalent, and a policy that only
 # applies under one backend is worse than none: it would silently bring
 # the container — and the provider keys in its runtime metadata — back
-# after every reboot, so `run.py down` would rarely be what actually
-# clears them. Both backends now behave the same way: `run.py up` is
+# after every reboot, so `uv run agw down` would rarely be what actually
+# clears them. Both backends now behave the same way: `uv run agw up` is
 # what starts agentgateway, including after a crash or reboot.
 # See docs/security.md.
 
@@ -44,9 +44,9 @@ ports = [
 ]
 
 # Bare NAME entries are passed to the runtime by name only (`-e NAME`),
-# so the value is inherited from run.py's own environment instead of
+# so the value is inherited from agw's own environment instead of
 # appearing on the `docker run`/`container run` command line where any
-# local process could read it out of `ps`. run.py populates
+# local process could read it out of `ps`. agw populates
 # OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY from `pass`, and
 # GATEWAY_API_KEY_SHA256 with the *hash* of the gateway's own API key
 # (the key itself never enters the container). NAME=default entries are
@@ -60,7 +60,7 @@ env = [
   "RUST_LOG=info",
 ]
 
-# Also holds `htpasswd`, written by run.py on every `up` from the
+# Also holds `htpasswd`, written by agw on every `up` from the
 # agentgateway-ui-password entry in `pass` (bcrypt) and gitignored —
 # that's what the UI gateway's basicAuth policy reads.
 #
@@ -76,14 +76,14 @@ config_volume = "./config:/config"
 # Always read-write — holds the sqlite request-log database
 # (config/config.yaml's logging.database.url) backing the admin UI's
 # Logs page. Created on first `up` if missing, and chmod'ed 0700 by
-# run.py, since request logs can contain full prompts and responses.
+# agw, since request logs can contain full prompts and responses.
 volumes = [
   "./data:/data",
 ]
 
 # Host path of that request-log database — the ./data mount above plus
 # the filename from config/config.yaml's logging.database.url. Used by
-# `run.py prune` to drop old rows.
+# `uv run agw prune` to drop old rows.
 request_log_db = "./data/request-logs.db"
 
 # Appended as the container's args, but only outside writable mode —
