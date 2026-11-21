@@ -55,7 +55,14 @@ PROG = "uv run agw"
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 SERVICE_FILE = PROJECT_DIR / "service.toml"
 JAEGER_NAME = "agentgateway-jaeger"
-JAEGER_IMAGE = "jaegertracing/all-in-one:latest"
+# Jaeger v2 (v1's all-in-one image is end-of-life), pinned by digest
+# for the same reason as the agentgateway image in service.toml. Its
+# image sets JAEGER_LISTEN_HOST=0.0.0.0, so OTLP on 4317 is reachable
+# from the agentgateway container without extra flags.
+JAEGER_IMAGE = (
+    "jaegertracing/jaeger:2.23.0"
+    "@sha256:3823829974ccfc2485d2e48b165579091f32295022ae80ca49704e2f4834116e"
+)
 JAEGER_CONFIG_FILE = "config-jaeger.yaml"
 
 OPENAI_PASS_ENTRY = os.environ.get("OPENAI_PASS_ENTRY", "openai-api-key")
@@ -67,6 +74,11 @@ GATEWAY_PASS_ENTRY = os.environ.get("GATEWAY_PASS_ENTRY", "agentgateway-api-key"
 # The admin UI's basic-auth password. Separate from the API key above
 # because it's used by a browser, not by code.
 UI_PASS_ENTRY = os.environ.get("UI_PASS_ENTRY", "agentgateway-ui-password")
+# The AES-256-GCM key agentgateway encrypts MCP session IDs with,
+# passed as SESSION_KEY. Left unset, agentgateway >= 1.7 generates one
+# and writes it into config.yaml — a tracked file — when that's
+# writable (-w), and runs with unencrypted sessions when it isn't.
+SESSION_PASS_ENTRY = os.environ.get("SESSION_PASS_ENTRY", "agentgateway-session-key")
 UI_USER = os.environ.get("GATEWAY_UI_USER", "admin")
 
 DEFAULT_PRUNE_DAYS = 30
@@ -286,6 +298,28 @@ def require_ui_password(entry):
     )
 
 
+def require_session_key(entry):
+    """Ensure an MCP session key exists in pass, generating one silently.
+
+    No prompt, unlike the gateway key or UI password: nobody ever types
+    or copies this one, it only has to be stable across restarts so
+    existing MCP sessions stay valid. 32 random bytes, hex-encoded — the
+    format agentgateway's config.session.key / SESSION_KEY expects.
+    """
+    if pass_has(entry):
+        return
+    r = subprocess.run(
+        ["pass", "insert", "-m", entry],
+        input=secrets.token_hex(32) + "\n",
+        stdout=subprocess.DEVNULL,
+        text=True,
+        check=False,
+    )
+    if r.returncode != 0:
+        die(f"'pass insert -m {entry}' failed")
+    print(f"Stored a new MCP session key at '{entry}'.", file=sys.stderr)
+
+
 def write_htpasswd(path, user, password):
     """Write an htpasswd file for agentgateway's basicAuth policy.
 
@@ -392,8 +426,6 @@ class DockerBackend:
                 JAEGER_NAME,
                 "-p",
                 "127.0.0.1:16686:16686",
-                "-e",
-                "COLLECTOR_OTLP_ENABLED=true",
                 JAEGER_IMAGE,
             ],
             stdout=subprocess.PIPE,
@@ -568,8 +600,6 @@ class ContainerBackend:
                 JAEGER_NAME,
                 "-p",
                 "127.0.0.1:16686:16686",
-                "-e",
-                "COLLECTOR_OTLP_ENABLED=true",
                 JAEGER_IMAGE,
             ],
             stdout=subprocess.PIPE,
@@ -700,6 +730,7 @@ def cmd_setup(backend):
     require_pass_entry(GEMINI_PASS_ENTRY, "Gemini API key")
     require_gateway_key(GATEWAY_PASS_ENTRY)
     require_ui_password(UI_PASS_ENTRY)
+    require_session_key(SESSION_PASS_ENTRY)
     print(f"Setup complete. Run '{PROG} up' to start agentgateway.")
 
 
@@ -754,6 +785,7 @@ def cmd_up(backend, spec, writable, jaeger=False):
     backend.check_prereqs()
     require_gateway_key(GATEWAY_PASS_ENTRY)
     require_ui_password(UI_PASS_ENTRY)
+    require_session_key(SESSION_PASS_ENTRY)
 
     if writable:
         print(
@@ -787,6 +819,7 @@ def cmd_up(backend, spec, writable, jaeger=False):
     # Only the hash crosses into the container: agentgateway's `keyHash`
     # form compares incoming keys against it, so the gateway key itself
     # never shows up in the container's environment.
+    os.environ["SESSION_KEY"] = pass_show(SESSION_PASS_ENTRY)
     os.environ["GATEWAY_API_KEY_SHA256"] = gateway_key_hash(
         pass_show(GATEWAY_PASS_ENTRY)
     )
@@ -916,6 +949,7 @@ def build_parser():
             f"  GEMINI_PASS_ENTRY      pass path for the Gemini key      (default: {GEMINI_PASS_ENTRY})\n"
             f"  GATEWAY_PASS_ENTRY     pass path for the gateway's key   (default: {GATEWAY_PASS_ENTRY})\n"
             f"  UI_PASS_ENTRY          pass path for the UI password     (default: {UI_PASS_ENTRY})\n"
+            f"  SESSION_PASS_ENTRY     pass path for the MCP session key (default: {SESSION_PASS_ENTRY})\n"
             f"  GATEWAY_UI_USER        username for the UI's basic auth  (default: {UI_USER})\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -937,7 +971,8 @@ def build_parser():
         "setup",
         help=(
             "Check prerequisites and create any missing pass entries: the "
-            "OpenAI/Anthropic/Gemini keys, plus agentgateway's own API key."
+            "OpenAI/Anthropic/Gemini keys, plus agentgateway's own API key, "
+            "UI password and MCP session key."
         ),
     )
 

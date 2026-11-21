@@ -186,9 +186,12 @@ state directory — until the container is removed. That's inherent to
 env-var secrets and is the trade-off this setup accepts; `uv run agw down`
 is what clears it.
 
-The two local secrets are the exception. Only the gateway key's SHA-256
-and the UI password's bcrypt hash ever leave `pass`, so neither is
-recoverable from the container at all.
+The gateway key and UI password are the exception. Only the gateway
+key's SHA-256 and the UI password's bcrypt hash ever leave `pass`, so
+neither is recoverable from the container at all. The MCP session key
+(`agentgateway-session-key`, passed as `SESSION_KEY`) can't work that
+way — agentgateway needs the key itself to encrypt with — so it's in the
+container's environment like the provider keys, with the same caveats.
 
 No restart policy is set, deliberately. Docker's `unless-stopped` would
 have brought the container back after every reboot, which quietly turns

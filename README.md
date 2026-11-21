@@ -23,7 +23,9 @@ needs: your `openai-api-key`, `anthropic-api-key` and `gemini-api-key`
 (a [Gemini API](https://aistudio.google.com/apikey) key), plus two local
 secrets it offers to generate for you — `agentgateway-api-key` (what
 clients present to the gateway) and `agentgateway-ui-password` (the
-admin UI login, username `admin`).
+admin UI login, username `admin`). A sixth, `agentgateway-session-key`
+(agentgateway's MCP session-encryption key), is generated without
+asking, since nobody ever needs to type it.
 
 Needs [uv](https://docs.astral.sh/uv/). `agw` is a stdlib-only Python
 package with no dependencies to install; the first `uv run` creates

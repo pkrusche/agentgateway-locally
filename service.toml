@@ -15,7 +15,7 @@ name = "agentgateway"
 # together on upgrade; read the new digest off the pulled image with
 # `docker buildx imagetools inspect <ref>` or
 # `container image inspect <ref>`.
-image = "cr.agentgateway.dev/agentgateway:v1.4.1@sha256:efd79355b89094a8225a9db465d9a01dc656b377f0bab458761b935a13231d29"
+image = "cr.agentgateway.dev/agentgateway:v1.7.0@sha256:60216aafb03d37f94e952ff3d51d2f630a65b10ecaebdc0a864882f92610c45b"
 
 # No restart policy is set. Docker could do `unless-stopped` here, but
 # Apple's `container` CLI has no equivalent, and a policy that only
@@ -49,7 +49,10 @@ ports = [
 # local process could read it out of `ps`. agw populates
 # OPENAI_API_KEY/ANTHROPIC_API_KEY/GEMINI_API_KEY from `pass`, and
 # GATEWAY_API_KEY_SHA256 with the *hash* of the gateway's own API key
-# (the key itself never enters the container). NAME=default entries are
+# (the key itself never enters the container), and SESSION_KEY with the
+# MCP session-encryption key from the agentgateway-session-key entry
+# (generated on first use) — set so agentgateway >= 1.7 doesn't
+# generate one itself and write it into config.yaml. NAME=default entries are
 # passed as literal values and fall back to that default when unset
 # (override with e.g. RUST_LOG=debug).
 env = [
@@ -57,6 +60,7 @@ env = [
   "ANTHROPIC_API_KEY",
   "GEMINI_API_KEY",
   "GATEWAY_API_KEY_SHA256",
+  "SESSION_KEY",
   "RUST_LOG=info",
 ]
 

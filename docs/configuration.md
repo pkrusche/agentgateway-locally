@@ -39,12 +39,12 @@ the privacy implications live.
 
 ### `config.modelCatalog`
 
-Points at `/config/base-costs.json`, the per-model input/output/cache
-token rates agentgateway prices requests against. With no `modelCatalog`
-configured at all, agentgateway falls back to a built-in default path
-(`/base-costs.json`, the container's filesystem root), which isn't
-writable — so a cost-catalog refresh from the UI fails there regardless
-of `-w`.
+Points at `/config/base-costs.json`, per-model input/output/cache token
+rates layered over the catalog built into agentgateway (since 1.6), with
+later entries taking precedence. The built-in catalog already prices
+common public models, so this file is an overlay: it's what a cost-catalog
+refresh from the UI writes to, and it needs a path under `/config` for
+that refresh to be saveable in `-w` mode.
 
 That file is **not in the repo** — it's generated data that the UI
 rewrites in full on every refresh, so tracking it meant 174KB of churn
@@ -56,7 +56,7 @@ warn llm::cost  model catalog load failed; will load when the files
                 become valid: ... missing files: /config/base-costs.json
 ```
 
-and serves normally, just without cost figures on the Logs page. To
+and serves normally, pricing requests from its built-in catalog. To
 populate it, start with `uv run agw up -w` and refresh the cost catalog
 from the admin UI. The file is watched, so it's picked up as soon as it
 appears — no restart needed.
@@ -126,7 +126,8 @@ The Gemini models go to the Gemini API (Google AI Studio,
 `gemini-api-key` `pass` entry — not Vertex AI, which would be a separate
 `vertex` provider with Google Cloud credentials instead of an API key.
 agentgateway talks to Gemini through its OpenAI-compatible endpoint, so
-call these models via `/v1/chat/completions`. They carry no `defaults`:
+call these models via `/v1/chat/completions`; since agentgateway 1.5,
+Gemini SDKs can also use the native `generateContent` API. They carry no `defaults`:
 Gemini 3 models already think dynamically at their highest level unless
 told otherwise, and a client that wants less can send Chat Completions'
 `reasoning_effort` itself. The model list mirrors what the `gcp.gemini`
@@ -144,6 +145,14 @@ Published on `:3000` with the same `apiKey` policy as the LLM listener.
 since tool calls are a bigger blast radius than chat proxying, and it's
 easier to add a target to an authenticated listener than to remember to
 lock one down afterwards.
+
+MCP session IDs are encrypted with the key in `$SESSION_KEY`, which
+`uv run agw up` takes from the `agentgateway-session-key` entry in `pass`
+(generating it on first use). It's set through the environment rather
+than as `config.session.key` here on purpose: with no key configured,
+agentgateway (since 1.7) generates one and writes it into this file
+whenever the file is writable — i.e. under `-w`, putting a secret into a
+tracked file — and otherwise runs with unencrypted sessions.
 
 ### `gateways.ui` and `ui`
 
