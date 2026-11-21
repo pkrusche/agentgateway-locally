@@ -127,11 +127,17 @@ The Gemini models go to the Gemini API (Google AI Studio,
 `vertex` provider with Google Cloud credentials instead of an API key.
 agentgateway talks to Gemini through its OpenAI-compatible endpoint, so
 call these models via `/v1/chat/completions`; since agentgateway 1.5,
-Gemini SDKs can also use the native `generateContent` API. They carry no `defaults`:
-Gemini 3 models already think dynamically at their highest level unless
-told otherwise, and a client that wants less can send Chat Completions'
-`reasoning_effort` itself. The model list mirrors what the `gcp.gemini`
-section of `base-costs.json` prices; add others the same way.
+Gemini SDKs can also use the native `generateContent` API.
+
+The configured set is the Gemini 4 family (`gemini-4-argon`, `-carbon`,
+`-hydrogen`, `-neon`), all thinking models. They carry no `defaults`, so
+thinking runs at Google's default level; a client that wants a specific
+level can send Chat Completions' `reasoning_effort` itself. To see what
+else the key can reach, list `GET /v1beta/models` on the Gemini API with
+the key in an `x-goog-api-key` header, and add entries the same way.
+Models newer than `base-costs.json` show no cost on the Logs page until
+the catalog is refreshed (or agentgateway's built-in catalog covers
+them).
 
 These are defaults, so a client-provided value takes precedence. Use a
 model's `overrides` map when the gateway must force a value on every
