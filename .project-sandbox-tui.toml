@@ -1,0 +1,85 @@
+# project-sandbox-tui — per-project settings (merged over ~/.config/project-sandbox-tui/config.toml)
+
+[project]
+# Exactly one image source: base_image, dockerfile, or a generated build.
+# Empty values clear inherited global image settings.
+base_image = ""
+dockerfile = ""
+docker_context = ""
+build = "python-uv"
+build_version = ""
+# dockerfile = "Dockerfile"            # -> --dockerfile (relative to the repo)
+# docker_context = "."                 # -> --docker-context
+# build = "python-uv"                  # python-uv | rust-cargo | node-npm
+# build_version = "3.12"               # -> --python / --rust for the generated build
+# worktree_dir = ""                    # -> --worktree-dir (default: sibling <repo>-workspaces)
+keep_workspace = true                  # -> --keep-workspace
+# default_branch_start = "main"        # start revision for new bookmarks
+# main_branch = "main"                 # baseline for diff, fast-forward, @ saves and cleanup
+
+# [defaults]
+# agent = "claude"                     # claude | codex | opencode | pi | bash
+# model = ""
+# effort = "medium"                    # low | medium | high | xhigh | max
+# fast = false                         # Codex / Claude; project-sandbox >= 0.3.1
+
+# [profiles.review]                    # :config-profiles edits these in the TUI
+# agent = "codex"                      # launch forms offer profiles and custom
+# model = ""
+# effort = "high"
+# fast = false
+# extra_args = ["--memory=16g"]          # additional project-sandbox switches
+
+# [commands]                           # :name runs the shell command in the repository
+# test = "uv run pytest"               # :test -k merge appends the arguments
+
+# [actions.review]                     # :review starts this prompt as a background run on
+# prompt = "Review {bookmark} against {main}; fix what you find."  # each selected bookmark
+# effort = "high"                      # agent / model / effort / timeout: launch defaults
+
+# [leader]                             # ui.leader (\) then these keys run a command line
+# t = "test"                           # "*test" runs it in each selected workspace
+# rv = "review"
+
+[security]
+level = 2
+
+[network]
+extra_domains = ["developers.openai.com", "platform.openai.com", "docs.claude.com", "platform.claude.com", "www.anthropic.com", "ai.google.dev", "github.com", "api.github.com", "raw.githubusercontent.com", "agentgateway.dev", "cr.agentgateway.dev", "registry-1.docker.io", "auth.docker.io", "hub.docker.com"]
+
+[catalogue]
+default_provider = "claude-code"
+
+[commands]
+test = "uv run python -m unittest discover -s tests"
+up = "uv run agw up"
+down = "uv run agw down"
+restart = "uv run agw restart"
+
+[actions.bump]
+prompt = "Bring this repo's model lists and version pins up to date on {bookmark} (baseline {main}).\nIf /run/sbx-feedback/context.json has a brief or topic, follow it and limit the work to what it asks.\n\nRules from CLAUDE.md: add no comments to config/config.yaml (the admin UI strips them); put explanations in docs/configuration.md, which mirrors the config field by field.\n\n1. Models: check the OpenAI, Anthropic and Google Gemini API docs for current model IDs. Add new models to config/config.yaml following the existing entries, remove models the provider has retired, and update docs/configuration.md and the README examples to match. Leave config/base-costs.json alone (generated, gitignored).\n2. Pins: the agentgateway image in service.toml (tag AND sha256 digest; read the digest for the new tag from the registry's /v2/.../manifests/<tag> endpoint, Docker-Content-Digest header, never guess or reuse one), the Jaeger image in src/agw/cli.py, and the uv_build bound in pyproject.toml. Read the release notes for changes to config.yaml fields or CLI flags this repo uses.\n3. Run: uv run python -m unittest discover -s tests\n4. Record each logical change (models per provider, each pin) in its own jj revision, with messages in the style of the existing history (e.g. \"update version pins: agentgateway v1.7.0, ...\"). Do not push.\n\nIf a source is blocked by the firewall or a value cannot be verified, do not guess: report blocked, naming the host or value. In the final report, list what the owner should check on the host with `uv run agw up` and `checks/auth.sh`."
+persona = "implementer"
+
+[actions.implement]
+prompt = "Implement the change described in the brief/topic in /run/sbx-feedback/context.json on {bookmark} (baseline {main}).\nRead CLAUDE.md, README.md and docs/ first. `agw` (src/agw/cli.py) is stdlib-only and must stay that way; add or update unittest tests in tests/ for behaviour you change, and keep README.md and docs/ in step. Add no comments to config/config.yaml; document config in docs/configuration.md.\nRun: uv run python -m unittest discover -s tests\nRecord each logical change in its own jj revision with a short lowercase message like the existing history. Do not push.\nIf the brief leaves a decision open, report blocked with the question. In the final report, list anything that needs a live check on the host (`uv run agw up`, `checks/auth.sh`), which cannot run in the sandbox."
+persona = "implementer"
+
+[actions.review]
+prompt = "Review the revisions on {bookmark} against {main}. Report only: do not edit files, and do not create, describe, squash or abandon jj revisions.\nCheck:\n- every new or changed model ID, image tag and digest against upstream sources; an image digest must be the registry's manifest digest for that tag;\n- no comments were added to config/config.yaml (CLAUDE.md); docs/configuration.md and README.md match the config;\n- removed models or old versions are not still referenced anywhere;\n- release-note changes that affect config.yaml, service.toml or the agw CLI are handled;\n- each logical change is in its own revision with a clear message;\n- uv run python -m unittest discover -s tests passes.\nReport findings ordered by severity with file:line, then say whether the bookmark is ready for the owner's host check (uv run agw up, checks/auth.sh)."
+persona = "reviewer"
+level = 2
+
+[workflows.bump]                       # :workflow bump [topic]  -> bump, then review
+planning_action = "bump"
+first_step_interactive = false
+steps = ["review"]
+
+[workflows.change]                     # :workflow change <topic> -> implement, then review
+planning_action = "implement"
+first_step_interactive = false
+steps = ["review"]
+
+[leader]
+t = "test"
+b = "bump"
+rv = "review"

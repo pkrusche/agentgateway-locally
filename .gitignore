@@ -16,3 +16,13 @@ __pycache__
 .project-sandbox/
 .devcontainer/
 .DS_Store
+
+# sbx-tui — local configuration skill
+/.agents/skills/sbx-tui-config/
+/.claude/skills/sbx-tui-config/
+
+# sbx-tui — local configuration skill
+/.agents/skills/sbx-tui-safety/
+/.claude/skills/sbx-tui-safety/
+/.agents/skills/sbx-run-feedback/
+/.claude/skills/sbx-run-feedback/
