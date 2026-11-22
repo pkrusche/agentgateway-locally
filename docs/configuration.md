@@ -94,22 +94,24 @@ right provider with the right upstream key.
 
 Each model can also define request defaults beside `params`. These are
 request-body fields, rather than upstream connection settings. The
-configured defaults use high reasoning for the OpenAI models, using the
-Responses API format:
+OpenAI models have no gateway reasoning defaults, so the same names work
+with both `/v1/chat/completions` and `/v1/responses`. Without a
+client-supplied effort, OpenAI uses the model's default.
 
-```yaml
-defaults:
-  reasoning:
-    effort: high
-```
+To request high effort, set the field in the client request for its API:
 
-Use `/v1/responses` for these OpenAI models (in pi, set
-`api: "openai-responses"` and `baseUrl: "http://localhost:4000/v1"`).
-Chat Completions uses `reasoning_effort` instead; these defaults are
-request-body fields and are not interchangeable between the two APIs.
-Clients using Chat Completions need separate model entries with defaults
-for that API, or no gateway reasoning defaults and client-supplied effort.
-Do not set both field formats on the same model.
+- Chat Completions: `"reasoning_effort": "high"`.
+- Responses: `"reasoning": {"effort": "high"}`.
+
+For pi's Responses client, set `api: "openai-responses"` and
+`baseUrl: "http://localhost:4000/v1"`.
+
+Gateway defaults are injected as request-body fields, not translated
+between these APIs. Adding `defaults.reasoning` to a shared OpenAI model
+makes Chat Completions fail with `Unknown parameter: 'reasoning'`;
+adding `defaults.reasoning_effort` instead breaks Responses. Do not set
+both field formats on the same model. If gateway-supplied effort is
+needed, use separate model aliases dedicated to each API.
 
 The Claude models use Anthropic's adaptive-thinking fields instead:
 
