@@ -89,13 +89,13 @@ Three upstream providers (`openai`, `anthropic`, `gemini`) resolving
 their credentials from `$OPENAI_API_KEY` / `$ANTHROPIC_API_KEY` /
 `$GEMINI_API_KEY`, and the
 client-facing model names that map onto them. A client asks for
-`claude-sonnet-5` or `gpt-5-mini` and agentgateway routes it to the
+`claude-sonnet-5-5` or `gpt-6-sol` and agentgateway routes it to the
 right provider with the right upstream key.
 
 Each model can also define request defaults beside `params`. These are
 request-body fields, rather than upstream connection settings. The
-configured defaults use medium reasoning for `gpt-5-mini` and high
-reasoning for the larger OpenAI models, using the Responses API format:
+configured defaults use high reasoning for the OpenAI models, using the
+Responses API format:
 
 ```yaml
 defaults:

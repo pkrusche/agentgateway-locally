@@ -74,7 +74,7 @@ which take it there rather than in `x-api-key`:
 curl http://localhost:4000/v1/chat/completions \
   -H "Authorization: Bearer $(uv run agw key)" \
   -H 'content-type: application/json' \
-  -d '{"model":"claude-sonnet-5","messages":[{"role":"user","content":"hi"}]}'
+  -d '{"model":"claude-sonnet-5-5","messages":[{"role":"user","content":"hi"}]}'
 ```
 
 That `$(...)` puts the gateway key into curl's arguments, where `ps`

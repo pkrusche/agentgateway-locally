@@ -90,7 +90,7 @@ printf 'header = "Authorization: Bearer %s"\n' "$(uv run agw key)" |
   curl --config - \
     --url http://localhost:4000/v1/chat/completions \
     -H 'content-type: application/json' \
-    -d '{"model":"claude-sonnet-5","messages":[{"role":"user","content":"hi"}]}'
+    -d '{"model":"claude-sonnet-5-5","messages":[{"role":"user","content":"hi"}]}'
 ```
 
 The key crosses as a pipe between two processes and never appears in
