@@ -29,6 +29,7 @@ which pyproject.toml's requires-python makes uv pick (or download).
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import platform
@@ -37,6 +38,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from shutil import which
@@ -82,6 +84,22 @@ SESSION_PASS_ENTRY = os.environ.get("SESSION_PASS_ENTRY", "agentgateway-session-
 UI_USER = os.environ.get("GATEWAY_UI_USER", "admin")
 
 DEFAULT_PRUNE_DAYS = 30
+
+# agentgateway's upstream model catalog, which `agw costs` turns into
+# config/base-costs.json. The raw URL, not the github.com/.../blob/ page,
+# which serves HTML.
+CATALOG_URL = (
+    "https://raw.githubusercontent.com/agentgateway/agentgateway/"
+    "main/catalog/model-catalog.json"
+)
+CATALOG_FILE = "model-catalog.json"
+BASE_COSTS_FILE = "base-costs.json"
+CATALOG_TIMEOUT = 60
+# Rate fields the cost overlay doesn't carry. The 1h cache-write
+# breakdown and per-minute audio pricing are newer catalog fields that
+# agentgateway 1.7.0's base-costs.json has no place for.
+DROPPED_RATE_FIELDS = ("cacheWriteDetails", "perAudioMinute")
+
 # How long `up` waits for the container to reach "running" before
 # calling it a failed start, and how often it re-checks meanwhile.
 STARTUP_TIMEOUT = 15.0
@@ -916,6 +934,101 @@ def cmd_prune(spec, days):
     print(f"Pruned {deleted} request log rows older than {days} days from {db}.")
 
 
+def _cost_rates(rates):
+    return {k: v for k, v in rates.items() if k not in DROPPED_RATE_FIELDS}
+
+
+def catalog_to_base_costs(catalog):
+    """Project agentgateway's model catalog down to the base-costs format.
+
+    Keeps each model's rates and its context-length tiers. Drops names,
+    limits, capabilities and the like, plus service-tier tiers
+    (fast/flex/priority, which have no contextOver), none of which the
+    cost overlay uses. Models with no rates are left out.
+    """
+    providers = {}
+    for provider, pdata in sorted(catalog.get("providers", {}).items()):
+        models = {}
+        for model, mdata in sorted(pdata.get("models", {}).items()):
+            rates = _cost_rates(mdata.get("rates") or {})
+            if not rates:
+                continue
+            entry = {"rates": rates}
+            tiers = [
+                {"contextOver": t["contextOver"], "rates": _cost_rates(t["rates"])}
+                for t in mdata.get("tiers") or []
+                if "contextOver" in t and "serviceTier" not in t
+            ]
+            if tiers:
+                entry["tiers"] = tiers
+            models[model] = entry
+        providers[provider] = {"models": models}
+    return {"providers": providers}
+
+
+def download_catalog(url=CATALOG_URL):
+    try:
+        with urllib.request.urlopen(url, timeout=CATALOG_TIMEOUT) as resp:
+            body = resp.read()
+    # URLError and TimeoutError are OSErrors; HTTPException covers a
+    # connection dropped mid-body (IncompleteRead).
+    except (OSError, http.client.HTTPException) as e:
+        die(f"couldn't download {url}: {e}")
+    try:
+        return body, json.loads(body)
+    except json.JSONDecodeError as e:
+        die(f"{url} isn't valid JSON: {e}")
+
+
+def write_atomic(path, data):
+    # Write-then-rename so agentgateway, which watches this file, never
+    # sees it half-written. config/ is a directory mount, so the rename
+    # shows up inside the container.
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
+def cmd_costs(config_dir=None, source=None):
+    config_dir = Path(config_dir) if config_dir else PROJECT_DIR / "config"
+    if source:
+        try:
+            catalog = json.loads(Path(source).read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            die(f"{source}: {e}")
+    else:
+        print(f"Downloading {CATALOG_URL}")
+        raw, catalog = download_catalog()
+        # Keep the downloaded copy around for reference (gitignored).
+        write_atomic(config_dir / CATALOG_FILE, raw)
+    if not catalog.get("providers"):
+        die("catalog has no providers — refusing to overwrite base-costs.json")
+
+    out = config_dir / BASE_COSTS_FILE
+    try:
+        old = json.loads(out.read_text())["providers"]
+    except (OSError, ValueError, KeyError):
+        old = {}
+    new = catalog_to_base_costs(catalog)["providers"]
+    write_atomic(out, (json.dumps({"providers": new}, indent=2) + "\n").encode())
+
+    def flat(providers):
+        return {
+            (p, m): v
+            for p, d in providers.items()
+            for m, v in d.get("models", {}).items()
+        }
+
+    o, n = flat(old), flat(new)
+    added = len(n.keys() - o.keys())
+    removed = len(o.keys() - n.keys())
+    changed = sum(1 for k in n.keys() & o.keys() if n[k] != o[k])
+    print(
+        f"Wrote {out}: {len(n)} models across {len(new)} providers "
+        f"({added} added, {removed} removed, {changed} repriced)."
+    )
+
+
 def cmd_down(backend, spec):
     backend.down(spec["name"])
     backend.down(JAEGER_NAME)
@@ -1038,11 +1151,30 @@ def build_parser():
         help=f"Keep entries newer than this many days (default: {DEFAULT_PRUNE_DAYS}).",
     )
 
+    costs_p = sub.add_parser(
+        "costs",
+        help=(
+            "Download agentgateway's model catalog and regenerate "
+            "config/base-costs.json from it."
+        ),
+    )
+    costs_p.add_argument(
+        "--from",
+        dest="source",
+        metavar="FILE",
+        help="Use a local model-catalog.json instead of downloading it.",
+    )
+
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+
+    # Doesn't touch the container, so needs no backend or service.toml.
+    if args.command == "costs":
+        cmd_costs(source=args.source)
+        return
 
     backend_name = args.backend or default_backend_name()
     backend = get_backend(backend_name)

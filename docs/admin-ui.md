@@ -16,9 +16,10 @@ Saving config edits or refreshing the cost catalog needs `-w`.
 
 By default `uv run agw up` mounts `config/` **read-only** — the admin UI can
 view config and the cost catalog, but any attempt to save an edit or
-refresh `base-costs.json` fails with "Permission denied" — and that
-refresh is the only way to (re)generate the cost catalog, which isn't
-tracked in the repo. Pass `-w` (or
+refresh `base-costs.json` fails with "Permission denied". (The cost
+catalog can also be regenerated without the UI, and on agentgateway
+1.7.0 has to be: `uv run agw costs` — see
+[Configuration](configuration.md#configmodelcatalog).) Pass `-w` (or
 `--writable`) to mount `config/` read-write instead, and skip passing
 `-f /config/config.yaml` so agentgateway manages the directory itself:
 

@@ -1,6 +1,7 @@
 /data/
-# Generated pricing data, refreshed from the admin UI in -w mode — large,
-# churns on every refresh, and reproducible. See docs/configuration.md.
+# Generated pricing data, refreshed by `uv run agw costs` (or the admin UI
+# in -w mode) — large, churns on every refresh, and reproducible. See
+# docs/configuration.md.
 /config/base-costs.json
 # Written by `uv run agw up` from the agentgateway-ui-password entry in
 # `pass`. Bcrypt hashes aren't as sensitive as the password, but there's
@@ -26,3 +27,4 @@ __pycache__
 /.claude/skills/sbx-tui-safety/
 /.agents/skills/sbx-run-feedback/
 /.claude/skills/sbx-run-feedback/
+config/model-catalog.json

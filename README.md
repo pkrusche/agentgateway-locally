@@ -47,6 +47,7 @@ uv run agw down        # stop and remove the container
 uv run agw key         # print the gateway's own API key (for clients)
 uv run agw ui-password # print the admin UI's basic-auth password
 uv run agw prune       # drop request-log rows older than 30 days
+uv run agw costs       # refresh config/base-costs.json from agentgateway's catalog
 ```
 
 Once it's up:

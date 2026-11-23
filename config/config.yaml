@@ -157,3 +157,7 @@ ui:
       htpasswd:
         file: /config/htpasswd
       realm: agentgateway
+frontendPolicies:
+  accessLog:
+    database:
+      llm: full
