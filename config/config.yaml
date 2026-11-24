@@ -54,6 +54,11 @@ llm:
       reference: openai
     params:
       model: gpt-6-luna
+  - name: gpt-6.1-terra
+    provider:
+      reference: openai
+    params:
+      model: gpt-6.1-terra
   - name: gpt-6.2-astra
     provider:
       reference: openai
