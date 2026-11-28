@@ -47,6 +47,7 @@ uv run agw down        # stop and remove the container
 uv run agw key         # print the gateway's own API key (for clients)
 uv run agw ui-password # print the admin UI's basic-auth password
 uv run agw prune       # drop request-log rows older than 30 days
+uv run agw sessions    # requests, tokens and cost per client session
 uv run agw costs       # refresh config/base-costs.json from agentgateway's catalog
 ```
 
@@ -105,7 +106,7 @@ The real provider keys stay in the container; clients never see them.
 - [Backends](docs/backends.md) — Apple `container` vs Docker, and the
   macOS Local Network privacy gotcha.
 - [Request logs](docs/request-logs.md) — prompts and completions on
-  disk, and pruning them.
+  disk, per-session cost, and pruning them.
 - [Troubleshooting](docs/troubleshooting.md).
 
 `checks/auth.sh` asserts that every route on all three listeners rejects

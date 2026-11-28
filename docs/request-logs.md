@@ -21,6 +21,42 @@ command is safe to run while the gateway is up — it just skips the
 `VACUUM` if the database is busy. Worth putting on a cron/launchd timer
 if you use the gateway regularly.
 
+## Per-session usage
+
+Requests that carry a session ID — from the
+`x-project-sandbox-session-id` header that project-sandbox sends, or a
+session header agentgateway detects itself — are tagged with it as
+`agentgateway.session` (see [Configuration →
+`config.standardAttributes.session`](configuration.md#configstandardattributessession)).
+
+```sh
+uv run agw sessions                 # one line per session, most recent first
+uv run agw sessions --days 7        # only requests from the last week
+uv run agw sessions <session-id>    # that session, broken down by model
+```
+
+Each line shows request and error counts, input/output tokens and cost.
+A cost marked `*` is a lower bound: some of its successful requests
+used a model the cost catalog doesn't price yet (`uv run agw costs`).
+The command opens the database read-only, so it's safe while the
+gateway is running. Rows with no session ID aren't counted, and `prune`
+removes session history along with everything else.
+
+The same breakdown is available directly in sqlite:
+
+```sql
+SELECT json_extract(attributes_json, '$."agentgateway.session"') AS session,
+       COUNT(*), SUM(cost)
+FROM request_logs GROUP BY session;
+```
+
+Under `up --jaeger`, request spans carry the same `agentgateway.session`
+attribute, so a session's traces are a tag search in Jaeger
+(`agentgateway.session=<id>`). agentgateway also adopts a trace ID
+from an incoming W3C `traceparent` header, so a client that sends one
+fixed `traceparent` per session gets all of that session's requests in
+a single trace.
+
 ## Pruning is retention, not erasure
 
 `prune` sets `PRAGMA secure_delete = ON` before deleting, so pages it

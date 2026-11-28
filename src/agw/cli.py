@@ -85,6 +85,13 @@ UI_USER = os.environ.get("GATEWAY_UI_USER", "admin")
 
 DEFAULT_PRUNE_DAYS = 30
 
+# Where config.standardAttributes.session (config/config.yaml) puts the
+# session ID — taken from the x-project-sandbox-session-id request
+# header — in each request-log row's attributes_json. The generated
+# Jaeger config adds the same name as a span attribute.
+SESSION_ATTRIBUTE = "agentgateway.session"
+SESSION_JSON_PATH = f'$."{SESSION_ATTRIBUTE}"'
+
 # agentgateway's upstream model catalog, which `agw costs` turns into
 # config/base-costs.json. The raw URL, not the github.com/.../blob/ page,
 # which serves HTML.
@@ -788,6 +795,12 @@ def write_jaeger_config(config_dir, endpoint):
         "  tracing:\n"
         f"    otlpEndpoint: {endpoint}\n"
         "    randomSampling: true\n"
+        # config.standardAttributes.session already lands in the
+        # request log on its own, but not on spans — this makes a
+        # session searchable as a tag in Jaeger too.
+        "    fields:\n"
+        "      add:\n"
+        f"        {SESSION_ATTRIBUTE}: request.agent.session\n"
     )
     path = config_dir / JAEGER_CONFIG_FILE
     path.write_text(contents.replace(marker, tracing, 1))
@@ -932,6 +945,123 @@ def cmd_prune(spec, days):
         con.close()
 
     print(f"Pruned {deleted} request log rows older than {days} days from {db}.")
+
+
+def session_usage(con, session=None, since=None):
+    """Per-session totals from the request log, most recent first.
+
+    With `session`, one row per model for just that session instead.
+    `since` is an ISO-8601 UTC timestamp compared against completed_at,
+    the same string format agentgateway writes. Each row is a dict with
+    session/model, first/last timestamps, request and error counts,
+    input/output tokens, cost, and `unpriced` — the number of rows with
+    no cost because the catalog doesn't price that model, so `cost` is
+    a lower bound whenever it's non-zero.
+    """
+    key = "gen_ai_request_model" if session else "session"
+    where = ["session IS NOT NULL"]
+    params = [SESSION_JSON_PATH]
+    if session:
+        where.append("session = ?")
+        params.append(session)
+    if since:
+        where.append("completed_at >= ?")
+        params.append(since)
+    sql = (
+        f"SELECT {key}, MIN(started_at), MAX(completed_at), COUNT(*), "
+        "SUM(http_status >= 400), COALESCE(SUM(input_tokens), 0), "
+        "COALESCE(SUM(output_tokens), 0), COALESCE(SUM(cost), 0), "
+        "SUM(cost IS NULL AND http_status < 400) "
+        "FROM (SELECT *, json_extract(attributes_json, ?) AS session "
+        "FROM request_logs) "
+        f"WHERE {' AND '.join(where)} "
+        f"GROUP BY {key} ORDER BY MAX(completed_at) DESC"
+    )
+    names = (
+        "model" if session else "session",
+        "first",
+        "last",
+        "requests",
+        "errors",
+        "input_tokens",
+        "output_tokens",
+        "cost",
+        "unpriced",
+    )
+    return [dict(zip(names, row)) for row in con.execute(sql, params)]
+
+
+def _short_time(stamp):
+    # '2026-11-28T15:49:31.811631+00:00' -> '2026-11-28 15:49' (UTC)
+    return stamp[:16].replace("T", " ") if stamp else ""
+
+
+def format_session_usage(rows, label):
+    header = (label, "first (UTC)", "last (UTC)", "reqs", "errs", "in tok", "out tok", "cost $")
+    lines = []
+    for r in rows:
+        cost = f"{r['cost']:.4f}" + ("*" if r["unpriced"] else "")
+        lines.append(
+            (
+                r[label] or "?",
+                _short_time(r["first"]),
+                _short_time(r["last"]),
+                str(r["requests"]),
+                str(r["errors"]),
+                f"{r['input_tokens']:,}",
+                f"{r['output_tokens']:,}",
+                cost,
+            )
+        )
+    widths = [max(len(row[i]) for row in [header, *lines]) for i in range(len(header))]
+    out = []
+    for row in [header, *lines]:
+        cells = [
+            cell.ljust(w) if i < 3 else cell.rjust(w)
+            for i, (cell, w) in enumerate(zip(row, widths))
+        ]
+        out.append("  ".join(cells).rstrip())
+    if any(r["unpriced"] for r in rows):
+        out.append(
+            "* some successful requests have no cost — their model isn't in "
+            f"the cost catalog (`{PROG} costs`), so the figure is a lower bound."
+        )
+    return "\n".join(out)
+
+
+def cmd_sessions(spec, session=None, days=None):
+    db = host_path(spec["request_log_db"])
+    if not db.exists():
+        print(f"{db} doesn't exist yet — no sessions logged.")
+        return
+    since = (
+        (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        if days is not None
+        else None
+    )
+    # Read-only, so it's safe next to a running gateway and can't
+    # create an empty database by accident.
+    con = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        try:
+            rows = session_usage(con, session, since)
+        except sqlite3.DatabaseError as e:
+            die(f"{db}: {e}")
+    finally:
+        con.close()
+    if not rows:
+        if session:
+            print(f"No request-log rows for session {session}.")
+        else:
+            print(
+                "No request-log rows carry a session ID. Clients tag "
+                "requests with the x-project-sandbox-session-id header; "
+                "see docs/request-logs.md."
+            )
+        return
+    if session:
+        print(f"Session {session}\n")
+    print(format_session_usage(rows, "model" if session else "session"))
 
 
 def _cost_rates(rates):
@@ -1151,6 +1281,25 @@ def build_parser():
         help=f"Keep entries newer than this many days (default: {DEFAULT_PRUNE_DAYS}).",
     )
 
+    sessions_p = sub.add_parser(
+        "sessions",
+        help=(
+            "Show request counts, tokens and cost per client session "
+            "(x-project-sandbox-session-id), or per model for one session."
+        ),
+    )
+    sessions_p.add_argument(
+        "session",
+        nargs="?",
+        help="Session ID to break down by model (default: list all sessions).",
+    )
+    sessions_p.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Only count requests from the last this many days.",
+    )
+
     costs_p = sub.add_parser(
         "costs",
         help=(
@@ -1174,6 +1323,10 @@ def main(argv=None):
     # Doesn't touch the container, so needs no backend or service.toml.
     if args.command == "costs":
         cmd_costs(source=args.source)
+        return
+    # Reads the request-log database on the host; no backend either.
+    if args.command == "sessions":
+        cmd_sessions(load_service(), args.session, args.days)
         return
 
     backend_name = args.backend or default_backend_name()

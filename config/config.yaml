@@ -6,6 +6,8 @@ config:
       url: sqlite:///data/request-logs.db
   modelCatalog:
   - file: /config/base-costs.json
+  standardAttributes:
+    session: 'default(request.headers["x-project-sandbox-session-id"], request.agent.session)'
 llm:
   policies:
     apiKey:

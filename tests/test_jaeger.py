@@ -23,6 +23,9 @@ class JaegerConfigTests(unittest.TestCase):
                 "  tracing:\n"
                 "    otlpEndpoint: http://10.0.0.2:4317\n"
                 "    randomSampling: true\n"
+                "    fields:\n"
+                "      add:\n"
+                "        agentgateway.session: request.agent.session\n"
                 "  adminAddr: off\nllm: {}\n",
             )
 
